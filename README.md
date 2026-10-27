@@ -2,15 +2,17 @@
 
 # RiftUI
 
-A dock-style hub library for sUNC executors, written in Luau, plus **RiftSim**: a browser simulator that runs the *same* Luau source on an emulated Roblox client.
+[Documentation](https://riftui.naymmm.lol) · [Simulator](https://riftui.naymmm.lol/simulator)
 
-Tabs are tiles in a slim toolbar. Clicking a tile opens its panel in the middle of the screen; clicking anywhere else folds it back into the tile. Sections can be pinned to stay on screen while the toolbar is hidden.
+RiftUI is a Luau UI library for script hubs, designed for sUNC-compatible executors. **RiftSim** runs the same library in a browser so you can build and preview a hub without opening Roblox.
 
-## Use it in an executor
+Tabs live in a compact toolbar. Click a tab to open its panel, or click outside to close it. Pin a section to keep its controls on screen while the toolbar is hidden.
+
+## Quick start
 
 ```lua
--- Optional: pin the library and its assets to an exact commit (full SHA recommended).
-getgenv().riftcommit = "YOUR_COMMIT_SHA"
+-- Optional: uncomment and set a full commit SHA to pin this hub.
+-- getgenv().riftcommit = "YOUR_COMMIT_SHA"
 local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
 
 xpcall(function()
@@ -23,9 +25,9 @@ xpcall(function()
 end, Rift.HandleError)
 ```
 
-Replace `YOUR_COMMIT_SHA` with a hexadecimal commit SHA (7–40 characters). The loader returns the library from `/<SHA>/public/RiftUI.luau`, sets `Rift.Commit`, and pins its asset URLs to the same revision. Pinned assets are cached separately under `RiftUI/assets/<SHA>/`. Invalid pins and download/compile errors stop with a readable error; there is no fallback to another revision. The selected commit must contain the bundled `public/RiftUI.luau` file.
+To pin a version, uncomment `riftcommit` and replace the placeholder with a hexadecimal commit SHA (7–40 characters; use the full SHA when possible). The loader fetches `public/RiftUI.luau` and its assets from that revision, records it in `Rift.Commit`, and caches assets under `RiftUI/assets/<SHA>/`. The selected commit must include the bundled library. A failed pin stops with an error rather than loading a different version.
 
-Leave `getgenv().riftcommit` unset (or set it to `nil`) to use `main`. RiftSim serves `main` from the local project; pinned hashes are fetched from GitHub. The loader source is `lib/Loader.luau`, copied to `public/Loader.luau` by the bundle script.
+Without a pin, the loader uses `main`. In RiftSim, `main` previews your local files; pinned revisions are fetched from GitHub. Edit `lib/Loader.luau` to change the loader and run `pnpm bundle` to update its public copy.
 
 ### API
 
@@ -34,10 +36,10 @@ Leave `getgenv().riftcommit` unset (or set it to `nil`) to use `main`. RiftSim s
 | `Rift:CreateHub{ Name, Id, Subtitle, ToggleKey, ThemeName, Theme, Setup, Stealth, Settings }` | `Id` names the hub's folder, `RiftUI/<Id>/` (`setup.json`, `configs/`). Running a hub again with the same `Id` replaces the old copy. `ThemeName` is one of `Graphite`, `Ink`, `Slate`, `Ember`, and `Theme` overrides individual colours. `Settings = false` removes the built-in Settings tab (the only way to remove it). |
 | `Hub:Tab{ Name, Icon, Description }` | `Icon` is any [Lucide](https://lucide.dev/icons) name or an `rbxassetid://`. |
 | `Tab:Section{ Name, Side = "Left"\|"Right", Pinnable }` | `Section:Pin(pos?)`, `Section:Unpin()` |
-| `Toggle`, `Slider`, `Dropdown{ Multi }`, `Input`, `Keybind{ Mode = "Toggle"\|"Hold"\|"Always" }`, `ColorPicker`, `Button`, `Label`, `Paragraph` | Every control has `.Value`, `:Set(v, silent?)`, `:Get()`, `:OnChanged(fn)`, `:SetVisible(b)`. `Flag` registers it in `Rift.Flags`. |
-| `Hub:Notify{ Title, Content, Icon, Duration, Tone }` | Slit notifications: the card opens out of a thin slit that drains as the timer. Hover pauses, click dismisses. |
+| `Toggle`, `Slider`, `Dropdown{ Multi }`, `Input`, `Keybind{ Mode = "Toggle"\|"Hold"\|"Always" }`, `ColorPicker`, `Button`, `Label`, `Paragraph` | Value controls expose `.Value`, `:Get()` and `:Set(value, silent?)`. Buttons use `:SetText()`; labels and paragraphs use `:Set(...)`. Controls also support `:OnChanged(fn)` and `:SetVisible(b)`. `Flag` registers a control in `Rift.Flags`. |
+| `Hub:Notify{ Title, Content, Icon, Duration, Tone }` | Timed notifications. Hover to pause the timer; click to dismiss. |
 | `Hub:Prompt{ Icon, Title, Content, Buttons }` | Centred dialog. |
-| `Hub:SaveConfig(name)`, `:LoadConfig(name)`, `:ListConfigs()`, `:SetAutoload(name)` | JSON under `RiftUI/<ConfigFolder>/`. |
+| `Hub:SaveConfig(name)`, `:LoadConfig(name)`, `:ListConfigs()`, `:SetAutoload(name)` | JSON under `RiftUI/<Id>/configs/`. |
 | `Hub:SetBackground{ Url \| Base64 \| File, Opacity, Dim, Fit = "Crop"\|"Fit"\|"Stretch", Dock }` | A background image behind the panel (and optionally the toolbar). Base64 may be raw or a `data:` URI, and a URL that returns base64 text is decoded too. The image is checked to be PNG/JPEG/WebP/GIF, saved to `RiftUI/<Id>/background.<ext>` and shown through `getcustomasset`. `SetBackground(nil)` removes it. |
 | `Hub:PlaceBackground{ Preset, Fit, Anchor, Scale, OffsetX, OffsetY, Rotation, Opacity, Dim, Dock }` | Move the current image without reloading it. `Fit`: `Fill`, `Fit`, `Stretch` or `Free`. With `Free`, the image is anchored to one of 9 points (`TopLeft` … `BottomRight`), sized by `Scale` (image height ÷ panel height), nudged by the offsets and rotated by any angle; rotated images keep hugging their corner. Presets: `Full`, `Corner`, `Body pillow`, `Body pillow (lying down)`. The same fields work in `SetBackground`. |
 | `Hub:SaveTheme(look)`, `Hub:LoadTheme(name)`, `Hub:DeleteTheme(name)`, `Rift:ListThemes()` | Custom themes: `{ Name, Base, Colors, Background }`, saved to `RiftUI/themes/<name>.json` and shared by every hub. |
@@ -61,9 +63,9 @@ Leave `getgenv().riftcommit` unset (or set it to `nil`) to use `main`. RiftSim s
 
 ## Visual documentation
 
-Open `/` for the documentation and `/simulator` for RiftSim. The docs match RiftUI's graphite theme and cover installation, each control, theming, setup, notifications, configs, pinning, backgrounds and the hub API.
+The homepage (`/`) contains the docs. Open `/simulator` for RiftSim. The docs cover installation, controls, themes, setup, notifications, configs, pinning, backgrounds and the hub API.
 
-Examples include real screenshots and an opt-in **Try it live** view using the actual Luau library. The button page shows its after-click state; the themes guide compares Graphite, Ink, Slate and Ember and lets readers tween between them. Live examples use an isolated, in-memory filesystem.
+Each component page pairs screenshots with code and a **Try it live** example. The button example shows what changes after a click; the themes guide compares Graphite, Ink, Slate and Ember. Live examples run the library with a separate, in-memory filesystem.
 
 ```sh
 pnpm dev          # documentation at /; simulator at /simulator
@@ -78,21 +80,21 @@ Screenshot generation uses the repository's Playwright Chromium and ImageMagick.
 
 ```sh
 pnpm install
-pnpm dev        # http://localhost:5199
+pnpm dev        # docs: http://localhost:5199; simulator: /simulator
 pnpm test       # loader and library checks (66 checks)
 pnpm icons      # rebuild Lucide sheets + shadow
 ```
 
 - **Real Luau.** The engine (`engine/*.luau`) emulates the Roblox client in Luau: Instances, datatypes, Enums, signals, `task`, TweenService, UserInputService, RunService, HttpService, TextService and the sUNC surface (`gethui`, `cloneref`, `getcustomasset`, file functions, `request`, `loadstring`). It runs in the browser on the Luau VM compiled to WASM (`luau-web`), and under Lune for tests.
-- **JS does only what a renderer does.** It covers ScreenGui layout (UDim2, AnchorPoint, AutomaticSize, UIListLayout, UIGridLayout, UIPadding, UIScale, constraints, ScrollingFrame canvases, TextScaled/TextBounds), DOM rendering (UICorner, UIStroke, UIGradient, 9-slice, image rects with ImageColor3 tint, rich text), input hit-testing and real text editing.
+- **Rendering and input.** TypeScript handles ScreenGui layout (UDim2, AnchorPoint, AutomaticSize, UIListLayout, UIGridLayout, UIPadding, UIScale, constraints, ScrollingFrame canvases, TextScaled/TextBounds), DOM rendering (UICorner, UIStroke, UIGradient, 9-slice, image rects with ImageColor3 tint, rich text), input hit-testing and real text editing.
 - **Workspace.** `writefile` data persists in IndexedDB like an executor's workspace folder; see *Workspace files*.
-- **Executor profiles.** The topbar *Executor* picker makes the simulator pretend to be a weaker executor. There are four profiles: RiftSim (100%), MidExec (82%, no `getconnections`/`protectgui`, broken `listfiles`), FreeExec (~36%, no `gethui`/`cloneref`/`getcustomasset`, stubbed `request`/`setclipboard`), and PotatoExec (2%, `loadstring` and `HttpGet` only). The executor names are made up. Use them to see what the compatibility check and the hub's fallbacks do.
+- **Executor profiles.** The topbar *Executor* picker simulates missing or broken executor functions. Its four profiles are RiftSim (100%), MidExec (80%, no `getconnections`/`protectgui`, broken `listfiles`), FreeExec (~36%, no `gethui`/`cloneref`/`getcustomasset`, stubbed `request`/`setclipboard`), and PotatoExec (2%, `loadstring` and `HttpGet` only). These are invented executor names for testing compatibility checks and fallbacks.
 - **Uncaught errors.** Syntax errors and anything thrown outside `xpcall` (which RiftUI can't see) show a banner over the game and mark the line in the editor.
 - **Zoom.** Ctrl/⌘ + scroll zooms at the cursor, `+`/`−`/`Fit`/`100%` sit bottom-right, and Space-drag or middle-drag pans. Alt-click any element to select it in the Explorer.
 
 Known gaps: `rbxassetid://` images can't load in a browser (only `getcustomasset` files and URLs). Builder Sans and Gotham are shown with open stand-ins (Inter, Montserrat), and the Properties panel says so.
 
-Theme choices in setup, Settings and Theme Studio now tween existing colours over 250ms without rebuilding the hub. A new choice interrupts from the current colours; cancelling Theme Studio returns to the previous palette. Setup choices and the compatibility list remain visible in bounded pages, with scrolling where needed.
+Theme changes in setup, Settings and Theme Studio tween existing colours over 250ms without rebuilding the hub. A new choice interrupts from the current colours; cancelling Theme Studio returns to the previous palette. Setup choices and the compatibility list remain visible in bounded pages, with scrolling where needed.
 
 On small browser windows the simulator starts with a Responsive screen that follows the available preview area. Fixed portrait and landscape phone presets are also available. Panels and setup/studio windows fit the simulated viewport, and touch swipes scroll ScrollingFrames.
 
@@ -106,7 +108,7 @@ Large HTTP responses and file reads cross the Luau/WASM bridge in 32 KiB chunks 
 
 ### Cloudflare deployment
 
-`wrangler.toml` deploys the Vite `dist/` assets to Cloudflare Workers. It runs `pnpm build` before deployment. Documentation is served at `/`, RiftSim at `/simulator`, and live documentation examples remain at `/docs/preview.html`.
+`wrangler.toml` configures a Cloudflare Workers static-assets deployment from `dist/`. It runs `pnpm build` before deployment. Documentation is served at `/`, RiftSim at `/simulator`, and live documentation examples remain at `/docs/preview.html`.
 
 ```sh
 pnpm dlx wrangler deploy
