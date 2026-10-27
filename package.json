@@ -1,0 +1,33 @@
+{
+  "name": "riftui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test:browser": "node scripts/dev/binary-check.mjs",
+    "docs:images": "node scripts/dev/docs-capture.mjs",
+    "docs:check": "node scripts/dev/docs-check.mjs",
+    "icons": "node scripts/build-icons.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "dev": "node scripts/bundle.mjs && vite",
+    "preview": "vite preview",
+    "build": "node scripts/bundle.mjs && tsc --noEmit && vite build",
+    "test": "node scripts/bundle.mjs && node tests/transfers.mjs && node tests/http-proxy.mjs && lune run tests/loader && lune run tests/smoke"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/legacy-modes": "^6.5.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.36.0",
+    "@lezer/highlight": "^1.2.5",
+    "luau-web": "^1.5.1"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "lucide-static": "^1.62.0",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

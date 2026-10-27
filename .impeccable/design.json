@@ -1,0 +1,50 @@
+{
+  "colors": {
+    "panel": "#0F0F11",
+    "panelStroke": "#2A2A30",
+    "tile": "#17171A",
+    "tileHover": "#1E1E22",
+    "tileActive": "#26262B",
+    "section": "flat (no card)",
+    "sectionStroke": "#222227",
+    "divider": "#1D1D21",
+    "text": "#EDEDEF",
+    "subText": "#8E8E96",
+    "muted": "#5F5F67",
+    "field": "#0A0A0C",
+    "fieldStroke": "#2A2A30",
+    "track": "#2A2A30",
+    "knob": "#6E6E76",
+    "accent": "#F2F2F3",
+    "accentText": "#0F0F11",
+    "danger": "#FF7070",
+    "success": "#78DC96",
+    "warning": "#F2C24F"
+  },
+  "type": {
+    "family": "Inter (rbxassetid://12187365364)",
+    "mono": "Roboto Mono",
+    "sizes": {
+      "title": 15,
+      "label": 13,
+      "section": 12,
+      "description": 11,
+      "value": 12
+    }
+  },
+  "radius": {
+    "dock": 12,
+    "tile": 9,
+    "panel": 14,
+    "section": 10,
+    "popup": 10,
+    "field": 6,
+    "toast": 4
+  },
+  "motion": {
+    "rise": "0.34s Quint Out",
+    "fold": "0.16s Quad In",
+    "settle": "0.26s Quint Out",
+    "fast": "0.14s Quint Out"
+  }
+}

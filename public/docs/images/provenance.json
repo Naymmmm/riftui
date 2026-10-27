@@ -1,0 +1,138 @@
+{
+  "source": "Actual library screenshots, not generated mockups",
+  "images": [
+    {
+      "file": "overview.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=overview; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "button.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=button; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "button-clicked.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=button; state=one click; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "toggle.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=toggle; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "slider.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=slider; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "dropdown.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=dropdown; state=opened; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "input.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=input; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "keybind.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=keybind; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "color-picker.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=color-picker; state=opened; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "content.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=content; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "themes.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=themes; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "notifications.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=notifications; state=opened; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "setup.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=setup; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "configs.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=configs; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "pins.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=pins; state=opened; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "theme-graphite.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=themes; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "theme-ink.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=themes; state=initial; theme=Ink; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "theme-slate.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=themes; state=initial; theme=Slate; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    },
+    {
+      "file": "theme-ember.webp",
+      "origin": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=themes; state=initial; theme=Ember; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+      "cssWidth": 660,
+      "cssHeight": 500,
+      "pixelRatio": 2
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+Lucide icons 1.62.0 (ISC license, https://lucide.dev), rasterised by scripts/build-icons.mjs:
+white 2px strokes, 48px cells with 2px inset, 441 icons per 1024px sheet, 2176 icons in 5 sheets.
