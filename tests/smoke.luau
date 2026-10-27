@@ -166,7 +166,7 @@ host.run(probe, "probe")
 frames(2)
 local R = sink.R
 check(R.gui, "RiftUI ScreenGui exists under gethui()")
-check(R.tiles == 5, "dock has 4 hub tabs + Settings (got " .. tostring(R.tiles) .. ")")
+check(R.tiles == 6, "dock has search + 4 hub tabs + Settings (got " .. tostring(R.tiles) .. ")")
 
 host.run([[
 	local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()

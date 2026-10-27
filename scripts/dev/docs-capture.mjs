@@ -43,7 +43,7 @@ async function shot(file, demo, state = 'initial', theme = 'Graphite') {
   provenance.push({ file: file + '.webp', origin, cssWidth: 660, cssHeight: 500, pixelRatio: 2 })
 }
 try {
-  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins']) {
+  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette']) {
     await open(demo)
     if (demo === 'dropdown') await clickNode({ name: 'Chip' })
     if (demo === 'color-picker') await clickNode({ name: 'Swatch' })
@@ -63,7 +63,7 @@ try {
   }
   if (errors.length) throw new Error(errors.join('\n'))
   writeFileSync(out + '/provenance.json', JSON.stringify({ source: 'Actual library screenshots, not generated mockups', images: provenance }, null, 2) + '\n')
-  console.log('Captured ' + provenance.length + ' images; all 14 examples loaded; button callback verified.')
+  console.log('Captured ' + provenance.length + ' images; all 15 examples loaded; button callback verified.')
 } finally {
   await browser.close()
 }

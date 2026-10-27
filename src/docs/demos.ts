@@ -1,7 +1,13 @@
 export const themes = ['Graphite', 'Ink', 'Slate', 'Ember'] as const
-export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins'
-export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins']
+export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette'
+export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette']
 const examples: Record<DemoName, string> = {
+  'command-palette': `S:Toggle({Name="Sprint",Default=true})
+S:Slider({Name="Walk speed",Min=16,Max=100,Default=32})
+S:Button({Name="Run action",Callback=function() print("Action callback ran") end})
+local settings=Hub:Tab({Name="Appearance",Icon="palette"})
+settings:Section({Name="Theme"}):Dropdown({Name="Base theme",Options={"Graphite","Ink","Slate","Ember"},Default="Graphite",Callback=function(v) Hub:SetTheme(v) end})
+task.defer(function() Hub:OpenCommandPalette() end)`,
   overview: `local movement = Tab:Section({Name="Movement", Side="Left"})
 movement:Toggle({Name="Sprint", Default=true, Callback=function(v) print("Sprint:",v) end})
 movement:Slider({Name="Walk speed", Min=16, Max=100, Default=32, Suffix=" studs/s", Callback=function(v) print("Walk speed:",v) end})

@@ -520,6 +520,8 @@ local function destroy(self)
 	if d.destroyed then
 		return
 	end
+	-- Destroyed text boxes cannot keep keyboard shortcuts blocked.
+	if E.focusedTextBox == self then E.focusedTextBox = nil end
 	fireIf(d, "Destroying")
 	for i = #d.children, 1, -1 do
 		local c = d.children[i]

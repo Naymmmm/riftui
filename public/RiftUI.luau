@@ -880,6 +880,7 @@ function RiftUI:CreateHub(options)
 		Theme = theme,
 		ThemeName = themeName,
 		ToggleKey = toggleKey,
+		CommandKey = (saved and saved.CommandKey and Enum.KeyCode[saved.CommandKey]) or options.CommandKey or Enum.KeyCode.F2,
 		SetupData = saved,
 		Flags = RiftUI.Flags,
 		Tabs = {},
@@ -1036,6 +1037,12 @@ function RiftUI:CreateHub(options)
 		if self._open then self:_fitPanel(self._open, false) end
 	end)
 
+	self.CommandButton = create("TextButton", {
+		Name = "OpenCommands", BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+		Size = UDim2.fromOffset(40, 40), LayoutOrder = -100, Parent = self.Dock,
+	}, { corner(9) })
+	iconLabel("search", 19, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = self.CommandButton })
+	self:_connect(self.CommandButton.MouseButton1Click, function() self:OpenCommandPalette() end)
 	self:_bindInput()
 	if options.Settings ~= false then
 		self:_buildSettings()
@@ -1241,6 +1248,10 @@ function Hub:_bindInput()
 			if UserInputService:GetFocusedTextBox() then
 				return
 			end
+			if input.KeyCode == self.CommandKey and not self._listening then
+				self:OpenCommandPalette()
+				return
+			end
 			if input.KeyCode == self.ToggleKey and not self._listening then
 				self:SetToolbarVisible(not self._visible)
 			end
@@ -1316,6 +1327,8 @@ function Hub:_panelGeometry(tab)
 end
 
 function Hub:_fitPanel(tab, animate: boolean)
+	if self._panelFitTween then self._panelFitTween:Cancel() end
+	if self._panelMoveTween then self._panelMoveTween:Cancel() end
 	local narrow = viewport().X / self._scale < 460
 	for side = 1, 2 do
 		local col = tab.Columns[side]
@@ -1332,7 +1345,7 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local goalSize = UDim2.fromOffset(math.min(470, viewport().X / self._scale - 24), h)
 	local goalPos = UDim2.new(0.5, 0, 0, cy)
 	if animate then
-		tween(self.PanelHolder, SETTLE, { Size = goalSize, Position = goalPos })
+		self._panelFitTween = tween(self.PanelHolder, SETTLE, { Size = goalSize, Position = goalPos })
 	else
 		self.PanelHolder.Size = goalSize
 		self.PanelHolder.Position = goalPos
@@ -1403,7 +1416,7 @@ function Hub:Open(tab)
 		self.PanelShadow.ImageTransparency = 1
 		tween(self.PanelShadow, RISE, { ImageTransparency = 0.1 })
 	end
-	tween(holder, RISE, { Position = goal })
+	self._panelMoveTween = tween(holder, RISE, { Position = goal })
 	tween(self.Panel, SOFT, { GroupTransparency = 0 })
 	tween(self.PanelRise, RISE, { Scale = 1 })
 	tween(self.PanelOutlineStroke, RISE, { Transparency = 0 })
@@ -1426,7 +1439,7 @@ function Hub:Close()
 	end
 	tween(self.PanelOutlineStroke, FOLD, { Transparency = 1 })
 	tween(self.PanelRise, FOLD, { Scale = 0.95 })
-	tween(holder, FOLD, { Position = holder.Position + UDim2.fromOffset(self:_tileOffset(tab) * 0.5, 14) })
+	self._panelMoveTween = tween(holder, FOLD, { Position = holder.Position + UDim2.fromOffset(self:_tileOffset(tab) * 0.5, 14) })
 	local tw = tween(self.Panel, FOLD, { GroupTransparency = 1 })
 	tw.Completed:Connect(function(state)
 		if state == Enum.PlaybackState.Completed and self._open == nil then
@@ -1835,6 +1848,9 @@ function Hub:Tab(options)
 	tab.Page = page
 	tab.Scroll = scroll
 	tab.Columns = { column(0), column(1), Frame = columns }
+	self:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if self._open == tab then self:_fitPanel(tab, false) end
+	end)
 
 	table.insert(self.Tabs, tab)
 	self:_record(self, "Tab", options, tab)
@@ -3187,7 +3203,7 @@ function Hub:SaveConfig(name: string): (boolean, string?)
 	if not string.match(name, "^[%w%s%-_]+$") then
 		return false, "use letters, numbers, spaces, - or _"
 	end
-	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale }
+	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale, CommandKey = self.CommandKey.Name }
 	for id, pos in self.Pins do
 		data.Pins[id] = { pos.X, pos.Y }
 	end
@@ -3229,6 +3245,7 @@ function Hub:LoadConfig(name: string): (boolean, string?)
 			end
 		end
 	end
+	if data.CommandKey and Enum.KeyCode[data.CommandKey] then self:SetCommandKey(Enum.KeyCode[data.CommandKey]) end
 	if type(data.Scale) == "number" then
 		self:SetScale(data.Scale)
 		if self._scaleControl then
@@ -3303,6 +3320,10 @@ function Hub:SetScale(scale: number)
 	scale = math.clamp(scale, 0.6, 1.5)
 	self._scale = scale
 	self.UIScale.Scale = scale
+	if self._open then self:_fitPanel(self._open, false) end
+	task.defer(function()
+		if not self._destroyed and self._open then self:_fitPanel(self._open, false) end
+	end)
 end
 
 ---------------------------------------------------------------- developer mode
@@ -3707,14 +3728,210 @@ local function fitModal(hub, layer, holder, width, height, onResize)
 		if onResize then onResize(w, h) end
 	end
 	local conn = layer:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
-	layer.Destroying:Connect(function() conn:Disconnect() end)
+	local scaleConn = hub.UIScale:GetPropertyChangedSignal("Scale"):Connect(fit)
+	layer.Destroying:Connect(function() conn:Disconnect() scaleConn:Disconnect() end)
 	fit()
+end
+
+---------------------------------------------------------------- command palette
+function Hub:SetCommandKey(key)
+	if typeof(key) ~= "EnumItem" or key.EnumType ~= Enum.KeyCode or key == Enum.KeyCode.Unknown then return end
+	self.CommandKey = key
+	if self._commandKeyControl then self._commandKeyControl:Set(key, true) end
+	self.SetupData = self.SetupData or {}
+	self.SetupData.CommandKey = key.Name
+	if hasFS then
+		pcall(function()
+			ensureFolder(RiftUI.Folder)
+			ensureFolder(self:_dir())
+			writefile(self:_dir() .. "/setup.json", HttpService:JSONEncode(self.SetupData))
+		end)
+	end
+end
+
+function Hub:CloseCommandPalette()
+	local palette = self._palette
+	if not palette then return end
+	self._palette = nil
+	palette.Input:ReleaseFocus()
+	palette.Layer:Destroy()
+end
+
+function Hub:_commandEntries()
+	local entries = {}
+	for _, tab in self.Tabs do
+		if tab.Tile.Visible then
+			table.insert(entries, { Name = tab.Name, Path = "Tab", Tab = tab })
+			for _, section in tab.Sections do
+				for _, control in section.Controls do
+					if not control._hidden and control.Type ~= "Label" and control.Type ~= "Paragraph" then
+						table.insert(entries, { Name = control.Name, Path = tab.Name .. " / " .. section.Name, Tab = tab, Control = control })
+					end
+				end
+			end
+		end
+	end
+	table.insert(entries, { Name = self._visible and "Hide toolbar" or "Show toolbar", Path = "Action", Run = function() self:ToggleToolbar() end })
+	table.insert(entries, { Name = "Close panel", Path = "Action", Run = function() self:Close() end })
+	table.insert(entries, { Name = "Run setup again", Path = "Action", Run = function() self:OpenSetup() end })
+	return entries
+end
+
+function Hub:OpenCommandPalette()
+	if self._destroyed or self._listening then return end
+	if self._palette then self:CloseCommandPalette() return end
+	self:_closePopup()
+	self.Tooltip.Visible = false
+	local theme = self.Theme
+	local layer = create("TextButton", {
+		Name = "CommandPalette", Text = "", AutoButtonColor = false,
+		BackgroundColor3 = themeColor(theme, "Scrim"), BackgroundTransparency = 0.5,
+		Size = UDim2.fromScale(1, 1), ZIndex = 81, Parent = self.Gui,
+	})
+	local win = create("Frame", {
+		Name = "CommandWindow", BackgroundColor3 = themeColor(theme, "Panel"),
+		AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(480, 390),
+		Active = true, ZIndex = 82, Parent = layer,
+	}, { corner(14), stroke(themeColor(theme, "PanelStroke")) })
+	local box = create("TextBox", {
+		Name = "CommandInput", BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(16, 6), Size = UDim2.new(1, -72, 0, 48),
+		Text = "", PlaceholderText = "Search this hub...", ClearTextOnFocus = false,
+		TextSize = 14, FontFace = inter(Enum.FontWeight.Medium),
+		TextColor3 = themeColor(theme, "Text"), PlaceholderColor3 = themeColor(theme, "SubText"),
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 83, Parent = win,
+	})
+	local close = create("TextButton", {
+		Name = "CloseCommands", BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 6), Size = UDim2.fromOffset(44, 44),
+		ZIndex = 83, Parent = win,
+	})
+	iconLabel("x", 16, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = close, ZIndex = 84 })
+	create("Frame", { BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0, Position = UDim2.fromOffset(12, 59), Size = UDim2.new(1, -24, 0, 1), ZIndex = 83, Parent = win })
+	local results = create("ScrollingFrame", {
+		Name = "CommandResults", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Position = UDim2.fromOffset(8, 66), Size = UDim2.new(1, -16, 1, -100),
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 83, Parent = win,
+	}, { list(Enum.FillDirection.Vertical, 2) })
+	local status = text({ Name = "CommandStatus", Text = "", TextSize = 11,
+		TextColor3 = themeColor(theme, "SubText"), Position = UDim2.new(0, 16, 1, -28),
+		Size = UDim2.new(1, -32, 0, 20), ZIndex = 83, Parent = win })
+	local palette = { Layer = layer, Input = box, Selected = 1, Matches = {}, Rows = {} }
+	self._palette = palette
+	local connections = {}
+	local function connect(signal, fn) table.insert(connections, signal:Connect(fn)) end
+	layer.Destroying:Connect(function()
+		for _, conn in connections do conn:Disconnect() end
+		if self._palette == palette then self._palette = nil end
+	end)
+	local function fit()
+		local vp = viewport() / self._scale
+		local top = topInset() / self._scale + 12
+		win.Position = UDim2.new(0.5, 0, 0, top)
+		win.Size = UDim2.fromOffset(math.min(480, vp.X - 24), math.min(390, vp.Y - top - 16))
+	end
+	connect(layer:GetPropertyChangedSignal("AbsoluteSize"), fit)
+	connect(self.UIScale:GetPropertyChangedSignal("Scale"), fit)
+	fit()
+	local function select(index)
+		palette.Selected = math.clamp(index, 1, math.max(1, #palette.Matches))
+		for i, row in palette.Rows do
+			row.BackgroundTransparency = i == palette.Selected and 0 or 1
+		end
+		local row = palette.Rows[palette.Selected]
+		if row then
+			local y = (row.AbsolutePosition.Y - results.AbsolutePosition.Y) / self._scale + results.CanvasPosition.Y
+			local height = results.AbsoluteSize.Y / self._scale
+			if y < results.CanvasPosition.Y then results.CanvasPosition = Vector2.new(0, y)
+			elseif y + 48 > results.CanvasPosition.Y + height then results.CanvasPosition = Vector2.new(0, y + 48 - height) end
+		end
+	end
+	local function activate(entry)
+		if self._palette ~= palette or not entry then return end
+		self:CloseCommandPalette()
+		if entry.Run then entry.Run() return end
+		self:SetToolbarVisible(true, true)
+		self:_applySearch("")
+		self.Search.Text = ""
+		self:Open(entry.Tab)
+		local control = entry.Control
+		if not control then return end
+		task.defer(function()
+			if self._destroyed or not control.Frame.Parent then return end
+			self:_fitPanel(entry.Tab, false)
+			task.wait()
+			if self._destroyed or not control.Frame.Parent then return end
+			if not control.Section.Pinned then
+				local scroll = entry.Tab.Scroll
+				local y = (control.Frame.AbsolutePosition.Y - scroll.AbsolutePosition.Y) / self._scale + scroll.CanvasPosition.Y
+				scroll.CanvasPosition = Vector2.new(0, math.max(0, y - 12))
+			end
+			local mark = stroke(themeColor(self.Theme, "Accent"), 1, 0)
+			mark.Parent = control.Frame
+			tween(mark, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 1 })
+			task.delay(1.3, function() mark:Destroy() end)
+		end)
+	end
+	local function refresh()
+		for _, row in palette.Rows do row:Destroy() end
+		palette.Rows, palette.Matches = {}, {}
+		local query = string.lower(box.Text)
+		local matches = {}
+		for order, entry in self:_commandEntries() do
+			local name = string.lower(entry.Name)
+			local haystack = name .. " " .. string.lower(entry.Path)
+			local matched = true
+			for token in string.gmatch(query, "%S+") do
+				if not string.find(haystack, token, 1, true) then matched = false break end
+			end
+			if matched then
+				entry.Score = name == query and 0 or (string.sub(name, 1, #query) == query and 1 or 2)
+				entry.Order = order
+				table.insert(matches, entry)
+			end
+		end
+		table.sort(matches, function(a, b) return a.Score < b.Score or (a.Score == b.Score and a.Order < b.Order) end)
+		for i = 1, math.min(40, #matches) do
+			local entry = matches[i]
+			table.insert(palette.Matches, entry)
+			local row = create("TextButton", { Name = "CommandResult", Text = "", AutoButtonColor = false,
+				BackgroundColor3 = themeColor(theme, "TileActive"), BackgroundTransparency = 1,
+				Size = UDim2.new(1, -4, 0, 48), LayoutOrder = i, ZIndex = 84, Parent = results,
+			}, { corner(8) })
+			text({ Text = entry.Name, FontFace = inter(Enum.FontWeight.Medium), TextSize = 13,
+				TextColor3 = themeColor(theme, "Text"), Position = UDim2.fromOffset(10, 5), Size = UDim2.new(1, -20, 0, 18),
+				TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 85, Parent = row })
+			text({ Text = entry.Path, TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+				Position = UDim2.fromOffset(10, 26), Size = UDim2.new(1, -20, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 85, Parent = row })
+			row.MouseButton1Click:Connect(function() activate(entry) end)
+			table.insert(palette.Rows, row)
+		end
+		results.CanvasPosition = Vector2.zero
+		status.Text = #matches == 0 and "No matches. Try a tab, section or control name." or (#matches > 40 and "Showing first 40 matches. Keep typing to narrow results." or tostring(#matches) .. " results. Select to jump.")
+		select(1)
+	end
+	connect(box:GetPropertyChangedSignal("Text"), refresh)
+	connect(box.FocusLost, function(enter) if enter then activate(palette.Matches[palette.Selected]) end end)
+	connect(close.MouseButton1Click, function() self:CloseCommandPalette() end)
+	connect(layer.MouseButton1Click, function() self:CloseCommandPalette() end)
+	connect(UserInputService.InputBegan, function(input)
+		if self._palette ~= palette or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == self.CommandKey then self:CloseCommandPalette()
+		elseif input.KeyCode == Enum.KeyCode.Down then select(palette.Selected + 1)
+		elseif input.KeyCode == Enum.KeyCode.Up then select(palette.Selected - 1)
+		elseif input.KeyCode == Enum.KeyCode.Return then activate(palette.Matches[palette.Selected]) end
+	end)
+	refresh()
+	box:CaptureFocus()
 end
 
 function Hub:OpenSetup()
 	if self._setupOpen then
 		return
 	end
+	self:CloseCommandPalette()
 	self._setupOpen = true
 	self._listening = true
 	self:Close()
@@ -4142,7 +4359,7 @@ function Hub:OpenSetup()
 		for _, c in conns do
 			c:Disconnect()
 		end
-		local data = { Version = RiftUI.Version, Completed = true, Skipped = skipped or nil, Theme = choice.Theme, ToggleKey = choice.ToggleKey.Name, Options = {}, Time = os.time(), Studio = (self.SetupData or {}).Studio }
+		local data = { Version = RiftUI.Version, Completed = true, Skipped = skipped or nil, Theme = choice.Theme, ToggleKey = choice.ToggleKey.Name, CommandKey = self.CommandKey.Name, Options = {}, Time = os.time(), Studio = (self.SetupData or {}).Studio }
 		for _, control in optionControls do
 			if control.Flag then
 				data.Options[control.Flag] = encodeValue(control)
@@ -5458,6 +5675,13 @@ function Hub:_buildSettings()
 			end,
 		})
 		self._toggleKeyControl = key
+		self._commandKeyControl = ui:Keybind({
+			Name = "Command palette key", Default = self.CommandKey, Mode = "None",
+			ChangedCallback = function(k)
+				if k then self:SetCommandKey(k) end
+				self._commandKeyControl:Set(self.CommandKey, true)
+			end,
+		})
 		self._scaleControl = ui:Slider({
 			Name = "Interface scale",
 			Min = 70,
@@ -5601,6 +5825,7 @@ function Hub:_teardown()
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	self._themeTweens = nil
 	self._destroyed = true
+	self:CloseCommandPalette()
 	self:_closePopup()
 	for _, c in self._conns do
 		c:Disconnect()
@@ -5645,6 +5870,7 @@ function Hub:Reinitialize()
 	local stealth = self.Stealth
 	local scale = self._scale
 	local toggleKey = self.ToggleKey
+	local commandKey = self.CommandKey
 	local wasOpen = self._open and self._open.Name
 	self:_teardown()
 	if failureGui then
@@ -5655,6 +5881,7 @@ function Hub:Reinitialize()
 		local fresh = RiftUI:CreateHub(self.Options)
 		fresh._replaying = true
 		fresh.ToggleKey = toggleKey
+		fresh.CommandKey = commandKey
 		fresh:SetScale(scale)
 		local map = { [self] = fresh }
 		for _, step in recipe do

@@ -69,7 +69,7 @@ Each component page pairs screenshots with code and a **Try it live** example. T
 
 ```sh
 pnpm dev          # documentation at /; simulator at /simulator
-pnpm docs:images  # regenerate 19 screenshots; requires the dev server
+pnpm docs:images  # regenerate 20 screenshots; requires the dev server
 pnpm docs:check   # check routes, search, copy, callbacks and mobile behavior
 pnpm build        # builds simulator + docs + live preview entry points
 ```
@@ -96,6 +96,8 @@ Known gaps: `rbxassetid://` images can't load in a browser (only `getcustomasset
 
 Theme changes in setup, Settings and Theme Studio tween existing colours over 250ms without rebuilding the hub. A new choice interrupts from the current colours; cancelling Theme Studio returns to the previous palette. Setup choices and the compatibility list remain visible in bounded pages, with scrolling where needed.
 
+Press **F2** or use the toolbar search button to find tabs, settings, controls, and built-in actions. Change the shortcut under Settings → Interface. Selecting a control reveals it without changing its value.
+
 On small browser windows the simulator starts with a Responsive screen that follows the available preview area. Fixed portrait and landscape phone presets are also available. Panels and setup/studio windows fit the simulated viewport, and touch swipes scroll ScrollingFrames.
 
 ### Remote images in RiftSim
@@ -104,7 +106,7 @@ Public image GETs are tried directly first. If a browser blocks the request, the
 
 Large HTTP responses and file reads cross the Luau/WASM bridge in 32 KiB chunks so ordinary image downloads do not overflow its string-marshalling stack. Empty downloads and HTML pages have distinct background-image errors.
 
-`pnpm test:browser` checks binary HTTP/file transfers, CORS retries, background loading, overlapping runs, and notification layout against the running dev server. Pass `--live-image=<url>` directly to `node scripts/dev/binary-check.mjs` to additionally exercise a real image URL.
+`pnpm test:browser` checks binary HTTP/file transfers, CORS retries, background loading, overlapping runs, notification layout, and command-palette navigation against the running dev server. Pass `--live-image=<url>` directly to `node scripts/dev/binary-check.mjs` to additionally exercise a real image URL.
 
 ### Cloudflare deployment
 
