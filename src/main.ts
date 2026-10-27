@@ -406,19 +406,29 @@ runtime.onFrame = () => {
 const saved = localStorage.getItem(STORE)
 const editor = createEditor($('editor'), saved ?? exampleHub, () => run(), (s) => localStorage.setItem(STORE, s))
 
+let runRequest = 0
 async function run() {
+  const request = ++runRequest
   $('empty').hidden = true
   hideScriptError()
   const exec = EXECUTORS.find((e) => e.id === localStorage.getItem(EXEC_STORE)) ?? EXECUTORS[0]
   clearLog()
   if (exec.id !== 'full') addLog({ level: 'info', text: `Pretending to be ${exec.label}: ${exec.off.length + exec.broken.length} executor globals are missing or broken this run.`, time: performance.now() })
   inspector.reset(runtime.scene)
-  await runtime.start(editor.get(), 'hub.lua')
+  try {
+    await runtime.start(editor.get(), 'hub.lua')
+  } catch (error) {
+    if (request === runRequest) addLog({ level: 'error', text: 'Run failed: ' + String(error), trace: error instanceof Error ? error.stack : undefined, time: performance.now() })
+    return
+  }
+  if (request !== runRequest) return
   inspector.reset(runtime.scene)
   viewportEl.focus({ preventScroll: true })
 }
 async function stop() {
+  const request = ++runRequest
   await runtime.stop()
+  if (request !== runRequest) return
   $('empty').hidden = false
   $('stat').innerHTML = '<i class="status-dot"></i>stopped'
   inspector.reset(runtime.scene)

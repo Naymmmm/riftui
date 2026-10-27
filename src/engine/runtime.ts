@@ -40,6 +40,8 @@ export class Runtime {
   private last = 0
   private renderDirty = true
   private generation = 0
+  // A state must outlive its pending Luau/host calls, including during startup.
+  private lifecycle: Promise<void> = Promise.resolve()
   private servedNotice = false
   private transfers = new TextTransfers()
   frameTime = 0
@@ -186,9 +188,21 @@ export class Runtime {
     }
   }
 
-  async start(source: string, name: string) {
-    await this.stop()
+  start(source: string, name: string): Promise<void> {
     const gen = ++this.generation
+    this.running = false
+    cancelAnimationFrame(this.raf)
+    const pending = this.lifecycle.then(async () => {
+      if (gen !== this.generation) return
+      await this.stopCurrent()
+      if (gen !== this.generation) return
+      await this.startCurrent(source, name, gen)
+    })
+    this.lifecycle = pending.catch(() => {})
+    return pending
+  }
+
+  private async startCurrent(source: string, name: string, gen: number) {
     this.servedNotice = false
     const w = this.layout.W
     const h = this.layout.H
@@ -205,8 +219,12 @@ export class Runtime {
     this.input.push('vp', w, h, this.touch ? 1 : 0)
 
     const engine = await (await fetch('/engine.luau')).text()
-    const state = await LuauState.createAsync({ __HOST: this.host() })
     if (gen !== this.generation) return
+    const state = await LuauState.createAsync({ __HOST: this.host() })
+    if (gen !== this.generation) {
+      state.destroy()
+      return
+    }
     this.state = state
     const boot = state.loadstring(engine, '=engine', false)
     if (typeof boot === 'string') {
@@ -214,6 +232,7 @@ export class Runtime {
       return
     }
     await boot()
+    if (gen !== this.generation) return
     if (!this.step || !this.run) {
       this.log('error', 'engine did not register')
       return
@@ -221,8 +240,10 @@ export class Runtime {
     this.running = true
     this.last = performance.now()
     await this.step(0, this.input.flush())
+    if (gen !== this.generation) return
     this.log('info', `Running ${name}`)
     await this.run(source, name)
+    if (gen !== this.generation) return
     this.renderDirty = true
     this.loop()
   }
@@ -251,10 +272,18 @@ export class Runtime {
       })
   }
 
-  async stop() {
+  stop(): Promise<void> {
+    ++this.generation
     this.running = false
     cancelAnimationFrame(this.raf)
-    this.generation++
+    const pending = this.lifecycle.then(() => this.stopCurrent())
+    this.lifecycle = pending.catch(() => {})
+    return pending
+  }
+
+  private async stopCurrent() {
+    this.running = false
+    cancelAnimationFrame(this.raf)
     while (this.busy) await new Promise((r) => setTimeout(r, 5))
     if (this.state) {
       try {

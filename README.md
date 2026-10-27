@@ -104,7 +104,7 @@ Public image GETs are tried directly first. If a browser blocks the request, the
 
 Large HTTP responses and file reads cross the Luau/WASM bridge in 32 KiB chunks so ordinary image downloads do not overflow its string-marshalling stack. Empty downloads and HTML pages have distinct background-image errors.
 
-`pnpm test:browser` checks a 3 MiB binary HTTP/file round trip, simulated CORS failure/retry, and background loading against the running dev server. Pass `--live-image=<url>` directly to `node scripts/dev/binary-check.mjs` to additionally exercise a real image URL.
+`pnpm test:browser` checks binary HTTP/file transfers, CORS retries, background loading, overlapping runs, and notification layout against the running dev server. Pass `--live-image=<url>` directly to `node scripts/dev/binary-check.mjs` to additionally exercise a real image URL.
 
 ### Cloudflare deployment
 

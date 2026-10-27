@@ -907,7 +907,7 @@ function RiftUI:CreateHub(options)
 		Name = "DockHolder",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -40),
+		Position = UDim2.new(0.5, 0, 1, -self:_dockBottom()),
 		Size = UDim2.fromOffset(0, 50),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Parent = gui,
@@ -1002,21 +1002,30 @@ function RiftUI:CreateHub(options)
 	}, { list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right) })
 	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Parent = gui })
 
-	-- On touch devices a small handle brings a hidden toolbar back
+	-- A persistent touch control can hide the toolbar and bring it back.
 	self.Restore = create("TextButton", {
-		Name = "ShowToolbar",
+		Name = "ToggleToolbar",
 		BackgroundColor3 = themeColor(theme, "Panel"),
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -16),
-		Size = UDim2.fromOffset(44, 6),
-		Text = "",
+		Position = UDim2.new(0.5, 0, 1, -12),
+		Size = UDim2.fromOffset(128, 44),
+		Text = "Hide toolbar",
+		TextSize = 13,
+		FontFace = inter(Enum.FontWeight.Medium),
+		TextColor3 = themeColor(theme, "Text"),
 		AutoButtonColor = false,
-		Visible = false,
+		Visible = UserInputService.TouchEnabled,
 		ZIndex = 35,
 		Parent = gui,
-	}, { corner(3), stroke(themeColor(theme, "PanelStroke")) })
+	}, { corner(10), stroke(themeColor(theme, "PanelStroke")) })
 	self:_connect(self.Restore.MouseButton1Click, function()
-		self:SetToolbarVisible(true)
+		self:ToggleToolbar()
+	end)
+
+	self:_connect(UserInputService:GetPropertyChangedSignal("TouchEnabled"), function()
+		self.Restore.Visible = UserInputService.TouchEnabled
+		if self._visible then self.DockHolder.Position = UDim2.new(0.5, 0, 1, -self:_dockBottom()) end
+		if self._open then self:_fitPanel(self._open, false) end
 	end)
 
 	self:_bindInput()
@@ -1244,17 +1253,23 @@ function Hub:_bindInput()
 	end)
 end
 
+function Hub:_dockBottom()
+	return UserInputService.TouchEnabled and 68 or 40
+end
+
 function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 	if self._visible == visible then
 		return
 	end
 	self._visible = visible
+	self.Restore.Text = visible and "Hide toolbar" or "Show toolbar"
+	self.Restore.Visible = UserInputService.TouchEnabled
 	local holder = self.DockHolder
 	if visible then
 		holder.Visible = true
-		self.Restore.Visible = false
-		holder.Position = UDim2.new(0.5, 0, 1, -28)
-		tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -40) })
+		local bottom = self:_dockBottom()
+		holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
+		tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
 	else
 		self:Close()
 		self:_closePopup()
@@ -1265,9 +1280,7 @@ function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 				holder.Visible = false
 			end
 		end)
-		if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
-			self.Restore.Visible = true
-		elseif not quiet then
+		if not UserInputService.TouchEnabled and not quiet then
 			self:Notify({
 				Title = "Toolbar hidden",
 				Content = "Press " .. keyName(self.ToggleKey) .. " to bring it back.",
@@ -1287,7 +1300,7 @@ function Hub:_panelGeometry(tab)
 	local s = self._scale
 	local vp = viewport() / s
 	local top = topInset() / s + 12
-	local bottom = vp.Y - 40 - 50 - 16
+	local bottom = vp.Y - self:_dockBottom() - 50 - 16
 	local h = 58 + tab.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
@@ -1481,7 +1494,7 @@ function Hub:Notify(options)
 	end
 	local theme = self.Theme
 	local duration = options.Duration or 4
-	local width = 300
+	local width = math.min(300, math.max(160, viewport().X / self._scale - 28))
 	self._toastOrder = (self._toastOrder or 0) - 1
 	local holder = create("Frame", {
 		Name = "Toast",
@@ -1540,9 +1553,31 @@ function Hub:Notify(options)
 		Parent = holder,
 	}, { corner(1) })
 
-	local h = card.AbsoluteSize.Y / self._scale + 2
+	local closing = false
+	local targetHeight, targetWidth = 0, 0
+	local function fitToast()
+		if self._destroyed or not holder.Parent or closing then return end
+		local nextWidth = math.min(300, math.max(160, viewport().X / self._scale - 28))
+		if nextWidth ~= width then
+			width = nextWidth
+			card.Size = UDim2.new(0, width - 8, 0, 0)
+		end
+		local h = math.max(37, math.ceil(card.AbsoluteSize.Y / self._scale) + 2)
+		if h == targetHeight and width == targetWidth then return end
+		targetHeight, targetWidth = h, width
+		tween(holder, SETTLE, { Size = UDim2.fromOffset(width, h) })
+	end
+	-- Wrapped text and late font/layout updates can change AutomaticSize after creation.
+	local sizeConn = card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitToast)
+	local viewportConn = self.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitToast)
+	local scaleConn = self.UIScale:GetPropertyChangedSignal("Scale"):Connect(fitToast)
+	holder.Destroying:Connect(function()
+		sizeConn:Disconnect()
+		viewportConn:Disconnect()
+		scaleConn:Disconnect()
+	end)
 	-- 1) the stack makes room, 2) the slit draws, 3) the card opens out of it
-	tween(holder, SETTLE, { Size = UDim2.fromOffset(width, h) })
+	fitToast()
 	local draw = tween(slit, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Size = UDim2.new(0, 2, 1, -6) })
 	draw.Completed:Wait()
 	if not holder.Parent then
@@ -1550,7 +1585,6 @@ function Hub:Notify(options)
 	end
 	tween(clip, RISE, { Size = UDim2.new(1, -6, 1, 0) })
 
-	local closing = false
 	local function close()
 		if closing then
 			return
@@ -4134,7 +4168,7 @@ function Hub:OpenSetup()
 		if self._themeControl then self._themeControl:Set(choice.Theme, true) end
 		local target = RiftUI.Hubs[#RiftUI.Hubs] or self
 		if not skipped then
-			target:Notify({ Title = "Setup complete", Content = "Press " .. keyName(choice.ToggleKey) .. " to show or hide the toolbar.", Icon = "circle-check", Duration = 4 })
+			target:Notify({ Title = "Setup complete", Content = UserInputService.TouchEnabled and "Tap Hide toolbar or Show toolbar at the bottom of the screen." or ("Press " .. keyName(choice.ToggleKey) .. " to show or hide the toolbar."), Icon = "circle-check", Duration = 4 })
 		end
 		local failed = 0
 		for _, r in choice.Compat or {} do

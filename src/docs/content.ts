@@ -88,7 +88,7 @@ xpcall(function()
 end, Rift.HandleError)` },
       { id: 'structure', title: 'How it fits together', columns: ['Object', 'Created with', 'Responsible for'], rows: [['Library', 'Loader.luau', 'Hub creation, flags, themes and error reporting.'], ['Hub', 'Rift:CreateHub(options)', 'Toolbar, panels, setup, files and notifications.'], ['Tab', 'Hub:Tab(options)', 'A toolbar tile and its panel content.'], ['Section', 'Tab:Section(options)', 'A group of controls, optionally pinnable.'], ['Control', 'Section:Button(options), etc.', 'An input, its value and its callback.']] },
       { id: 'identity', title: 'Give your hub a stable ID', text: ['<code>Id</code> determines the hub’s folder and identifies an earlier running copy. Re-running a hub with the same ID replaces that copy. Keep the ID stable when changing its display name.'] },
-      { id: 'open', title: 'Open and close panels', code: 'Hub:Open(Tab)\nHub:Close()\nHub:SetToolbarVisible(false)\nHub:SetToolbarVisible(true)', text: ['Right Shift toggles the toolbar by default. On touch devices a restore handle appears when the toolbar is hidden.'] },
+      { id: 'open', title: 'Open and close panels', code: 'Hub:Open(Tab)\nHub:Close()\nHub:SetToolbarVisible(false)\nHub:SetToolbarVisible(true)', text: ['Right Shift toggles the toolbar by default. On touch devices, the button below the toolbar switches between Hide toolbar and Show toolbar. It stays available in both states.'] },
     ],
   },
   control('button', 'Button', 'A single action, fired when the user clicks. Use a toggle when you need an on/off value.', 'Click Run action. Watch the label and callback output update.',
