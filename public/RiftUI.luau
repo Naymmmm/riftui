@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "51da011-dev",
+	Version = "d6b965b-dev",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -1265,8 +1265,12 @@ function RiftUI:CreateHub(options)
 			if prefs[key] ~= nil then return prefs[key] end
 			return default
 		end
-		if pref("Watermark", options.Watermark) then self:SetWatermark(true, true) end
-		if pref("KeybindList", options.KeybindList) then self:SetKeybindList(true, true) end
+		-- HUD pieces come up with the toolbar, not over the loading card
+		self:_afterLoading(function()
+			if self._destroyed then return end
+			if pref("Watermark", options.Watermark) and not self._watermark then self:SetWatermark(true, true) end
+			if pref("KeybindList", options.KeybindList) then self:SetKeybindList(true, true) end
+		end)
 		local language = pref("Language", options.Language)
 		if not language then
 			pcall(function()
