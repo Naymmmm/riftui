@@ -1,4 +1,5 @@
 import type { DemoName } from './demos'
+import showcase from '../../examples/showcase.luau?raw'
 
 export interface DocSection {
   id: string
@@ -37,7 +38,7 @@ export const pages: DocPage[] = [
     sections: [
       { id: 'loader', title: 'Load RiftUI', text: ['Load the library, create a hub, then add tabs, sections and controls. The official loader fetches RiftUI and its assets from this repository.'], code: loader },
       { id: 'included', title: 'What’s included', text: ['A compact toolbar opens floating panels. Pin sections, search controls with the <a href="#command-palette">command palette</a>, or move detailed settings into <a href="#hub-api">child windows</a>.', 'Build with buttons, toggles, sliders, player pickers, logs and live meters. <a href="#themes">Themes</a>, <a href="#translations">translations</a> and <a href="#configs">saved configs</a> are built in.'] },
-      { id: 'start', title: 'Get started', text: ['Follow the <a href="#quick-start">quick start</a> to build your first hub, or read the <a href="https://github.com/Naymmmm/riftui/blob/main/examples/hub.luau">complete example</a>. Each component page includes code, a screenshot and a live example.'] },
+      { id: 'start', title: 'Get started', text: ['Follow the <a href="#quick-start">quick start</a> to build your first hub, or try the <a href="#showcase">feature tour</a>, a demo hub that uses every feature. Each component page includes code, a screenshot and a live example.'] },
       { id: 'simulator', title: 'Preview in the docs', text: ['<a href="/simulator">RiftSim</a> is an optional browser workspace for trying your hub without launching Roblox. It runs the same Luau library with a simulated ScreenGui and sample game data. Your finished hub runs independently of the simulator.'] },
       { id: 'source', title: 'Source & license', text: ['RiftUI is open source under the <a href="https://github.com/Naymmmm/riftui/blob/main/LICENSE">Mozilla Public License 2.0</a>. Report issues or contribute on <a href="https://github.com/Naymmmm/riftui">GitHub</a>.'] },
     ],
@@ -101,6 +102,24 @@ end, Rift.HandleError)` },
       { id: 'structure', title: 'How it fits together', columns: ['Object', 'Created with', 'Responsible for'], rows: [['Library', 'Loader.luau', 'Hub creation, flags, themes and error reporting.'], ['Hub', 'Rift:CreateHub(options)', 'Toolbar, panels, setup, files and notifications.'], ['Tab', 'Hub:Tab(options)', 'A toolbar tab and its panel content.'], ['Section', 'Tab:Section(options)', 'A group of controls, optionally pinnable.'], ['Control', 'Section:Button(options), etc.', 'An input, its value and its callback.']] },
       { id: 'identity', title: 'Give your hub a stable ID', text: ['<code>Id</code> determines the hub’s folder and identifies an earlier running copy. Re-running a hub with the same ID replaces that copy. Keep the ID stable when changing its display name.'] },
       { id: 'open', title: 'Open and close panels', code: 'Hub:Open(Tab)\nHub:Close()\nHub:SetToolbarVisible(false)\nHub:SetToolbarVisible(true)', text: ['Right Shift toggles the toolbar by default. On touch devices, the button below the toolbar switches between Hide toolbar and Show toolbar. It stays available in both states.'] },
+    ],
+  },
+  {
+    slug: 'showcase', navTitle: 'Feature tour', title: 'Feature tour', group: 'Getting started', demo: 'showcase',
+    summary: 'One demo hub that uses every RiftUI feature. It runs on sample data and never touches the game.',
+    hint: 'Switch to Try it live, enter the key DEMO, then finish or skip setup. Open each toolbar tab to explore.',
+    sections: [
+      { id: 'run', title: 'Run the tour', text: ['Paste the script below into your executor or <a href="/simulator">RiftSim</a>. It starts with a key gate; the demo key is <kbd>DEMO</kbd>. A loading card stays up while the tabs are built, then first-run setup appears.', 'The source is <a href="https://github.com/Naymmmm/riftui/blob/main/examples/showcase.luau">examples/showcase.luau</a>. Copy any section of it into your own hub.'] },
+      { id: 'contents', title: 'What each tab shows', columns: ['Tab', 'Features'], rows: [
+        ['Key gate', 'CreateAuth with a stand-in Request, a remembered key, Get key and Discord links, and HubIcon.'],
+        ['Startup', 'A manual loading screen, first-run setup, requirements, translations, the watermark and the keybind list.'],
+        ['Controls', 'Buttons, toggles, a dependent group, sliders, dropdowns, segmented choices, a stepper, a range slider, keybinds, a colour picker and a section that starts collapsed.'],
+        ['Text & data', 'A multiline code input, a paragraph, an editable list and a console.'],
+        ['Live', 'Stats, progress bars and sparklines fed by a demo data loop.'],
+        ['People', 'A tab badge and a player picker in a section gated by a requirement.'],
+        ['Hub', 'A child window with two tabs and a Discord button, notifications and prompts, the command palette, themes and Theme Studio, scale, language, configs and pins.'],
+      ] },
+      { id: 'source', title: 'Full script', code: showcase },
     ],
   },
   {

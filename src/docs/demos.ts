@@ -1,6 +1,7 @@
+import showcase from '../../examples/showcase.luau?raw'
 export const themes = ['Graphite', 'Ink', 'Slate', 'Ember'] as const
-export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations' | 'encrypted-configs' | 'requirements' | 'stealth' | 'list' | 'loading' | 'auth' | 'social-button'
-export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth","list","loading","auth","social-button"]
+export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations' | 'encrypted-configs' | 'requirements' | 'stealth' | 'list' | 'loading' | 'auth' | 'social-button' | 'showcase'
+export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth","list","loading","auth","social-button","showcase"]
 const examples: Record<DemoName, string> = {
   requirements: `S:Button({Name="Use feature",Requires="Feature",Callback=function() print("Feature action ran") end})
 S:Slider({Name="Feature amount",Requires="Feature",Min=1,Max=10,Default=3})
@@ -92,6 +93,7 @@ local tools=Tab:Section({Name="Actions",Side="Right"})
 tools:Button({Name="Add waypoint",Callback=function() local n=#wp.Items+1 wp:Add({"Point "..n,math.random(-99,99)..", 4, "..math.random(-99,99)}) print("Added Point",n) end})
 tools:Button({Name="Clear list",Callback=function() wp:Clear() print("List cleared") end})`,
   auth: '', // built by authDemo
+  showcase: '', // examples/showcase.luau
   'social-button': `local win=Hub:Window({Title="About",Description="Community and support",Icon="info",Width=480,Height=300})
 win:SocialButton({Discord="https://discord.gg/your-invite",Callback=function(url) print("Copied:",url) end})
 win:Section({Name="Community"}):Paragraph({Title="Join the server",Content="The Discord button copies the invite. Narrow windows keep only the logo."})
@@ -154,9 +156,12 @@ task.spawn(function()
   print("Key accepted, loading the hub")
   loadstring(source)()
 end)`
+// The feature tour runs unchanged, apart from the docs theme picker.
+const showcaseDemo = (theme: string) => showcase.replaceAll('\tId = HUB_ID,\n', '\tId = HUB_ID,\n\tThemeName = ' + JSON.stringify(theme) + ',\n')
 export function demoSource(name: DemoName, theme = 'Graphite'): string {
   if (!themes.includes(theme as typeof themes[number])) theme = 'Graphite'
   if (name === 'auth') return authDemo(theme)
+  if (name === 'showcase') return showcaseDemo(theme)
   return [
     'local Rift=loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()',
     name === 'requirements' ? 'getgenv().featureReady=false' : '',
