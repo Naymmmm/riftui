@@ -12,7 +12,7 @@
     "dev": "node scripts/bundle.mjs && vite",
     "preview": "vite preview",
     "build": "node scripts/bundle.mjs && tsc --noEmit && vite build",
-    "test": "node scripts/bundle.mjs && node tests/transfers.mjs && node tests/http-proxy.mjs && node tests/config-crypto.mjs && lune run tests/loader && lune run tests/smoke",
+    "test": "node scripts/bundle.mjs && node tests/transfers.mjs && node tests/http-proxy.mjs && node tests/config-crypto.mjs && node tests/auth-server.mjs && lune run tests/loader && lune run tests/smoke",
     "brand:capture": "node scripts/dev/brand-capture.mjs"
   },
   "dependencies": {

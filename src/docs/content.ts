@@ -296,6 +296,51 @@ end, Rift.HandleError)` },
   ]
 },
   {
+  "slug": "list",
+  "title": "List / table",
+  "group": "Components",
+  "summary": "Rows of data your script owns, with optional columns, selection and remove buttons.",
+  "demo": "list",
+  "hint": "Click a row to select it, hover a row and press × to remove it, or add a waypoint.",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Waypoints = Section:List({\n    Name = \"Waypoints\",\n    Columns = { \"Name\", \"Position\" },\n    Items = {\n        { \"Spawn\", \"0, 5, 0\" },\n        { \"Shop\", \"42, 3, -18\" },\n    },\n    Removable = true,\n    Callback = function(item, index)\n        print(\"Selected\", item[1])\n    end,\n    OnRemove = function(item, index)\n        print(\"Removed\", item[1])\n    end,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "An item is a string or an array of cell values; each value is shown with tostring. Without Columns the list has one column and Get returns plain strings. With Columns, a header is added and each row is split into cells. Later columns use a monospace font unless Monospace is false.",
+        "Clicking a row selects it and calls Callback with a copy of the item and its index. The remove button drops the row first, then calls OnRemove. Lists hold data, not settings, so they are not saved in configs."
+      ]
+    },
+    {
+      "id": "options",
+      "title": "Options",
+      "columns": ["Option", "Type", "Default", "Description"],
+      "rows": [
+        ["Items", "{ string | { string } }", "{}", "Initial rows."],
+        ["Columns", "{ string }", "—", "Header labels. Omit for a single-column list."],
+        ["Widths", "{ number }", "equal", "Relative column widths, such as { 2, 1 }."],
+        ["Height", "number", "156", "Height of the scrolling area in pixels."],
+        ["Selectable", "boolean", "true", "Set false for a read-only list."],
+        ["Removable", "boolean", "false", "Adds a remove button to each row. Implied by OnRemove."],
+        ["MaxItems", "number", "—", "Drops the oldest rows past this count."],
+        ["Placeholder", "string", "\"Nothing here yet\"", "Shown when the list is empty."],
+        ["Callback", "function(item, index)", "—", "Runs when the user selects a row."],
+        ["OnRemove", "function(item, index)", "—", "Runs after the user removes a row."]
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "local index = Waypoints:Add({ \"Arena\", \"-120, 8, 64\" })\nWaypoints:Add({ \"Top\", \"0, 0, 0\" }, 1) -- insert at a position\nWaypoints:Update(index, { \"Arena\", \"-118, 8, 60\" })\nWaypoints:Remove(1)\nWaypoints:Select(2, true) -- silent\nlocal item, at = Waypoints:GetSelected()\nlocal all = Waypoints:Get()\nWaypoints:Set({ \"Only row\" })\nWaypoints:Clear()"
+    }
+  ]
+},
+  {
   "slug": "player-picker",
   "title": "Player picker",
   "group": "Components",
@@ -480,8 +525,8 @@ print(Targets:Get().NPCs) -- true`),
         print("Profile name:", text)
     end,
 })`,
-    [['Default', 'string', '""', 'Initial field value.'], ['Placeholder', 'string', '""', 'Shown when the field is empty.'], ['Finished', 'boolean', 'true behavior', 'Set false to emit while editing.'], ['Callback', 'function(string)', '—', 'Receives the field text.']],
-    ['By default the field commits on focus loss when its text changed, or when Enter is pressed. Set <code>Finished = false</code> to also receive changes as the user types.'],
+    [['Default', 'string', '""', 'Initial field value.'], ['Placeholder', 'string', '""', 'Shown when the field is empty.'], ['Finished', 'boolean', 'true behavior', 'Set false to emit while editing.'], ['MultiLine', 'boolean', 'false', 'A taller, wrapping field where Enter starts a new line.'], ['Lines', 'number', '4', 'Visible rows for a multiline field, 2–20.'], ['Code', 'boolean', 'false', 'Monospace text, for scripts and pasted codes.'], ['MaxLength', 'number', '—', 'Trims longer values, counted in characters.'], ['Callback', 'function(string)', '—', 'Receives the field text.']],
+    ['By default the field commits on focus loss when its text changed, or when Enter is pressed. Set <code>Finished = false</code> to also receive changes as the user types.', 'With <code>MultiLine = true</code>, Enter adds a line break and the value commits when the field loses focus. Single-line fields replace line breaks in <code>:Set()</code> values with spaces.', 'Multiline example: <code>Section:Input({ Name = "Script", MultiLine = true, Lines = 6, Code = true })</code>'],
     'Name:Set("Another profile")\nprint(Name:Get())\nName:Set("Quiet update", true)'),
   control('keybind', 'Keybind', 'Bind a keyboard key or mouse button to a toggle, hold action or binding-only control.',
     'Click a chip to rebind it, then focus this example and press the key. Escape cancels rebinding.',
@@ -634,6 +679,71 @@ print(Rift.Flags.PlayStyle.Value)` },
     ],
   },
   {
+    slug: 'social-button', title: 'Social button', group: 'Guides', demo: 'social-button',
+    summary: 'Link your community from a window header, using the platform’s own colours and logo.',
+    hint: 'Click the Discord button to copy the invite. Close the window and click a section header to fold it.',
+    sections: [
+      { id: 'usage', title: 'Add a Discord button', code: `local About = Hub:Window({ Title = "About", Icon = "info" })
+About:SocialButton({
+    Discord = "https://discord.gg/your-invite", -- or just "your-invite"
+    Callback = function(url) end,               -- optional, after copying
+})`, text: ['The button sits in the window header, left of the close button. Clicking it copies the invite and shows a notification. If the executor has no clipboard function, the notification shows the link instead. The window title gives up the room the button needs. Windows narrower than 420 pixels show the logo only.', 'Accepted links: <code>discord.gg/…</code>, <code>discord.com/invite/…</code> or a bare invite code. Anything else raises an error, so a typo is caught when the hub loads. Each window has one social button; calling it again replaces the button.'] },
+      { id: 'brand', title: 'Brand colours', text: ['Brand buttons keep their platform’s colours in every theme. Discord uses Blurple (<code>#5865F2</code>) with the official white logo, following the <a href="https://discord.com/branding">Discord brand guidelines</a>. The logo is never recoloured or redrawn. If the logo can’t load, the button still shows its label.'], columns: ['Option', 'Type', 'Description'], rows: [['Discord', 'string', 'Invite link or code. Also selects the platform.'], ['Label', 'string', 'Button text. Defaults to the platform name.'], ['Callback', 'function(url)', 'Runs after the invite is copied.']] },
+      { id: 'methods', title: 'Working with the button', code: 'local Social = About:SocialButton({ Discord = "your-invite" })\nprint(Social.Url) -- https://discord.gg/your-invite\nSocial:SetVisible(false)\nSocial:Destroy()' },
+    ],
+  },
+  {
+    slug: 'auth', title: 'Key gate', group: 'Guides', demo: 'auth',
+    summary: 'Ask for a key before your hub loads. Your server checks it and sends the hub script back.',
+    hint: 'Enter RIFT-DEMO and press Continue. Any other key shows the server’s refusal.',
+    sections: [
+      { id: 'flow', title: 'How the gate works', code: loader + `
+
+local source, key = Rift:CreateAuth({
+    Name = "My Hub",
+    Id = "my-hub",
+    Url = "https://auth.example.com/v1/script",
+    GetKeyUrl = "https://example.com/get-key",
+    Discord = "https://discord.gg/your-invite",
+    Note = "Keys last 24 hours.",
+})
+if not source then return end -- the user closed the gate
+
+loadstring(source)()`, text: ['<code>CreateAuth</code> shows a key prompt and waits. The key is sent to <code>Url</code> as <code>Authorization: Bearer &lt;key&gt;</code>. A 2xx response body is your hub script: CreateAuth returns it with the accepted key, and your loader runs it. If the user closes the gate, it returns <code>nil, "closed"</code>.', 'Load the hub after the gate. Use the same <code>Id</code> for the gate and the hub so the gate picks up the user’s saved theme.'] },
+      { id: 'security', title: 'What it protects', text: ['Code that is already on the user’s machine can always be edited, including any check in it. The gate is only secure because the server keeps the hub script until a valid key arrives. Keep the hub on your server, and do key checks, expiry and HWID binding there, not in the client script.'] },
+      { id: 'options', title: 'Options', columns: ['Option', 'Type', 'Default', 'Description'], rows: [
+        ['Url', 'string', '—', 'HTTPS endpoint that checks the key. Required unless you pass Request.'],
+        ['Request', 'function(key)', '—', 'Replaces the HTTP call. Return <code>true, source</code> to accept, <code>false, reason</code> to reject, or <code>nil, reason</code> for a temporary failure.'],
+        ['Name / Id', 'string', '"Rift Hub"', 'Card title and the folder that holds the saved key.'],
+        ['Title / Subtitle', 'string', 'Name / prompt', 'Card head.'], ['HubIcon', 'string or number', 'initial', 'Same as CreateHub: a Lucide name or an image asset ID. Pass the value your hub uses so both cards match.'],
+        ['Note', 'string', '—', 'A line under the head, such as where keys come from.'],
+        ['GetKeyUrl / Discord', 'string', '—', 'Adds a button that copies the link.'],
+        ['Placeholder', 'string', '"Paste your key"', 'Empty-field hint.'],
+        ['Remember', 'boolean', 'true', 'Saves an accepted key to <code>RiftUI/&lt;Id&gt;/auth.key</code> and checks it again on the next launch.'],
+        ['SendHwid', 'boolean', 'false', 'Sends <code>X-Rift-Hwid</code> from <code>gethwid()</code> or the Roblox client ID, so the server can lock a key to one device.'],
+        ['ThemeName / Theme', 'string / table', 'Graphite', 'Colours, the same as CreateHub.'],
+      ] },
+      { id: 'responses', title: 'Server responses', columns: ['Status', 'Gate shows', 'Saved key'], rows: [
+        ['2xx with a body', 'Key accepted, then closes', 'Saved'],
+        ['401 / 403', '<code>error</code> or <code>message</code> from a JSON body, plain text, or “Invalid key.”', 'Forgotten'],
+        ['429', 'Too many attempts', 'Kept'],
+        ['5xx / no connection', 'The status, or a connection message', 'Kept'],
+      ], text: ['A saved key is only forgotten when the server rejects it. A server or network failure keeps it for the next launch. Scripts larger than 16 MiB are refused.'] },
+      { id: 'logout', title: 'Forget a saved key', code: 'Rift:ClearAuthKey("my-hub")' },
+      { id: 'server', title: 'Reference server', code: 'import { authServer } from "./scripts/auth/server.mjs"\n\nauthServer({\n    // true to accept, false or a reason string to refuse\n    authorize: async (key, hwid) => (await lookUp(key, hwid)) ? true : "Key expired",\n    script: async (key, hwid) => readFile("hub.luau", "utf8"),\n}).listen(8789, "127.0.0.1")', text: ['<code>scripts/auth/server.mjs</code> answers <code>GET /v1/script</code>. It returns the script as text, refusals as <code>{ "error": "…" }</code>, and limits each client to 10 attempts per minute. It has no key store, payments or obfuscation: plug yours into <code>authorize</code> and <code>script</code>.', 'To try it with fixed keys, run <code>RIFT_AUTH_KEYS="key-one,key-two" RIFT_AUTH_SCRIPT=hub.luau node scripts/auth/server.mjs</code>. Run it behind an HTTPS reverse proxy, and set <code>RIFT_AUTH_TRUST_PROXY=1</code> so the limit counts the forwarded client address.'] },
+    ],
+  },
+  {
+    slug: 'loading', title: 'Loading screen', group: 'Guides', demo: 'loading',
+    summary: 'Show a branded card while your hub builds, then bring up the toolbar.',
+    hint: 'Replay the example to watch the card step through its stages.',
+    sections: [
+      { id: 'enable', title: 'Turn it on', code: 'local Hub = Rift:CreateHub({\n    Name = "My Hub",\n    Loading = true,\n})', text: ['The card shows the hub name and subtitle while the hub builds, applies preferences, checks requirements and loads the autoload config. The toolbar stays hidden, and <code>Hub:Open()</code> and first-run setup wait until the card has gone.'] },
+      { id: 'customize', title: 'Customize the card', code: 'Loading = {\n    Title = "My Hub",\n    Subtitle = "Fetching game data",\n    Icon = "rocket",\n    MinDuration = 1.5,\n}', columns: ['Option', 'Type', 'Default', 'Description'], rows: [['Title', 'string', 'hub Name', 'Large text on the card.'], ['Subtitle', 'string', 'hub Subtitle', 'Second line under the title.'], ['Icon', 'string', 'HubIcon', 'Overrides the hub’s <code>HubIcon</code> for this card. Without either, the chip shows the title’s first letter.'], ['MinDuration', 'number', '1', 'Seconds the card stays, so a fast build doesn’t flash.'], ['Manual', 'boolean', 'false', 'Keep the card until you call <code>Hub:FinishLoading()</code>.']] },
+      { id: 'manual', title: 'Drive it from your script', code: 'local Hub = Rift:CreateHub({ Name = "My Hub", Loading = { Manual = true } })\n\nHub:SetLoading("Fetching game data", 0.3)\nlocal data = fetchData()\nHub:SetLoading("Building interface", 0.7)\nbuildTabs(Hub, data)\nHub:FinishLoading()', text: ['Use Manual when your script yields before it builds, for example to download data. <code>SetLoading(status, progress)</code> changes the status line and moves the bar. Progress runs from 0 to 1 and never moves backwards. Omit either argument to leave that part unchanged. <code>Hub:IsLoading()</code> reports whether the card is still up.'] },
+    ],
+  },
+  {
     slug: 'requirements', title: 'Developer requirements', group: 'Guides', demo: 'requirements',
     summary: 'Supply your own function tests and gate features on their results.',
     hint: 'Enable Test result to unlock the feature. The test function belongs to the hub author.',
@@ -700,8 +810,8 @@ Hub:SetAutoload("default")`, text: ['Configs save flagged values plus the toolba
     slug: 'hub-api', title: 'Hub API', group: 'Reference',
     summary: 'The options and methods that manage a hub’s lifecycle and layout.',
     sections: [
-      { id: 'options', title: 'CreateHub options', columns: optionColumns, rows: [['Name', 'string', '"Rift Hub"', 'Display name.'], ['Id', 'string', 'Derived from Name', 'Stable identity and per-hub folder.'], ['Subtitle', 'string', '""', 'Supporting hub text.'], ['ToggleKey', 'Enum.KeyCode', 'RightShift', 'Toolbar visibility shortcut.'], ['CommandKey', 'Enum.KeyCode', 'F2', 'Command palette shortcut.'], ['ThemeName', 'string', '"Graphite"', 'Built-in palette name.'], ['Theme', 'table', '{}', 'Colour overrides.'], ['Setup', 'boolean or table', 'Enabled', 'First-run flow and optional custom choices.'], ['Settings', 'boolean', 'true', 'Built-in Settings tab, including About, the RiftUI license credit and GitHub link.'], ['Watermark', 'boolean', 'false', 'Optional name, FPS, ping and time strip.'], ['KeybindList', 'boolean', 'false', 'Optional bound-key overlay.'], ['Language', 'string', 'Supported Roblox locale or en', 'Initial interface language.'], ['Translations', 'table', '{}', 'Per-language dictionaries for your own labels.'], ['Stealth', 'boolean', 'false', 'Local images and Inter font files, built-in font fallback and quiet library warnings. An explicit value is read-only in Settings.']] },
-      { id: 'layout', title: 'Layout and visibility', columns: ['Method', 'Effect'], rows: [['Hub:Tab({ Name, Icon, Description })', 'Creates a toolbar tab and content page.'], ['Tab:Section({ Name, Side, Pinnable })', 'Creates a section; Side is Left or Right, otherwise balanced.'], ['Hub:Open(Tab) / Hub:Close()', 'Opens or closes the current panel.'], ['Hub:SetToolbarVisible(boolean)', 'Shows or hides the toolbar.'], ['Hub:SetScale(number)', 'Sets interface scale, clamped to 0.6–1.5, and recenters the open panel.'], ['Hub:OpenCommandPalette() / Hub:CloseCommandPalette()', 'Opens or dismisses hub-wide search.'], ['Hub:SetCommandKey(Enum.KeyCode)', 'Changes and saves the palette shortcut.'], ['Tab:SetBadge(number | string | nil)', 'Shows a small badge on the toolbar tab; nil or 0 hides it. CreateHub{ ToggleBadges = true } restores counting enabled toggles.'], ['Hub:Window({ Title, Description, Icon, Width, Height })', 'Creates a child window. Add Window:Tab({ Name, Icon }) for tabs, or Window:Section() for a single page.'], ['Window:Open() / Close() / Toggle() / SelectTab(tab)', 'Opens it over the panel with Escape and click-outside to close. Section:Button({ Name, Window = W }) opens it from a button.']] },
+      { id: 'options', title: 'CreateHub options', columns: optionColumns, rows: [['Name', 'string', '"Rift Hub"', 'Display name.'], ['Id', 'string', 'Derived from Name', 'Stable identity and per-hub folder.'], ['Subtitle', 'string', '""', 'Supporting hub text.'], ['HubIcon', 'string or number', 'initial', 'The hub’s mark on the loading card, key gate and watermark: a Lucide icon name such as <code>"rocket"</code>, or an image as <code>"rbxassetid://123"</code> or <code>123</code>. Images keep their colours. Stealth mode blocks remote images, so the name’s first letter is shown instead.'], ['ToggleKey', 'Enum.KeyCode', 'RightShift', 'Toolbar visibility shortcut.'], ['CommandKey', 'Enum.KeyCode', 'F2', 'Command palette shortcut.'], ['ThemeName', 'string', '"Graphite"', 'Built-in palette name.'], ['Theme', 'table', '{}', 'Colour overrides.'], ['Setup', 'boolean or table', 'Enabled', 'First-run flow and optional custom choices.'], ['Settings', 'boolean', 'true', 'Built-in Settings tab, including About, the RiftUI license credit and GitHub link.'], ['Watermark', 'boolean', 'false', 'Optional name, FPS, ping and time strip.'], ['KeybindList', 'boolean', 'false', 'Optional bound-key overlay.'], ['Language', 'string', 'Supported Roblox locale or en', 'Initial interface language.'], ['Translations', 'table', '{}', 'Per-language dictionaries for your own labels.'], ['Stealth', 'boolean', 'false', 'Local images and Inter font files, built-in font fallback and quiet library warnings. An explicit value is read-only in Settings.']] },
+      { id: 'layout', title: 'Layout and visibility', columns: ['Method', 'Effect'], rows: [['Hub:Tab({ Name, Icon, Description })', 'Creates a toolbar tab and content page.'], ['Tab:Section({ Name, Side, Pinnable })', 'Creates a section; Side is Left or Right, otherwise balanced.'], ['Tab:Section({ Collapsed, Collapsible })', 'Clicking a section header folds it to the header. The user’s choice is saved per hub. <code>Collapsed = true</code> starts it folded; <code>Collapsible = false</code> keeps it open.'], ['Section:SetCollapsed(boolean) / Section:IsCollapsed()', 'Folds or opens a section from code. Search and the command palette open folded sections to show matches.'], ['Window:SocialButton({ Discord = invite })', 'Adds a Discord button to a window header, in Blurple with the official logo. It copies the invite and takes a full link or a bare invite code.'], ['Hub:Open(Tab) / Hub:Close()', 'Opens or closes the current panel.'], ['Hub:SetToolbarVisible(boolean)', 'Shows or hides the toolbar.'], ['Hub:SetScale(number)', 'Sets interface scale, clamped to 0.6–1.5, and recenters the open panel.'], ['Hub:OpenCommandPalette() / Hub:CloseCommandPalette()', 'Opens or dismisses hub-wide search.'], ['Hub:SetCommandKey(Enum.KeyCode)', 'Changes and saves the palette shortcut.'], ['Tab:SetBadge(number | string | nil)', 'Shows a small badge on the toolbar tab; nil or 0 hides it. CreateHub{ ToggleBadges = true } restores counting enabled toggles.'], ['Hub:Window({ Title, Description, Icon, Width, Height })', 'Creates a child window. Add Window:Tab({ Name, Icon }) for tabs, or Window:Section() for a single page.'], ['Window:Open() / Close() / Toggle() / SelectTab(tab)', 'Opens it over the panel with Escape and click-outside to close. Section:Button({ Name, Window = W }) opens it from a button.']] },
       { id: 'lifecycle', title: 'Lifecycle', code: 'Hub:Reinitialize() -- rebuild, preserve values and references\nHub:Destroy() -- remove the GUI and connections', text: ['<code>Reinitialize</code> replays the hub’s recorded calls and forwards old references to the new controls. Theme changes do not require a rebuild.'] },
       { id: 'errors', title: 'Handle loading errors', code: 'xpcall(function()\n    -- Create your hub and controls here\nend, Rift.HandleError)', text: ['<code>Rift.HandleError</code> records the error and shows a failure card. Control callbacks have their own error capture. Developer Mode exposes the state history and captured errors.'] },
     ],

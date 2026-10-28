@@ -1,6 +1,6 @@
 export const themes = ['Graphite', 'Ink', 'Slate', 'Ember'] as const
-export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations' | 'encrypted-configs' | 'requirements' | 'stealth'
-export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth"]
+export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations' | 'encrypted-configs' | 'requirements' | 'stealth' | 'list' | 'loading' | 'auth' | 'social-button'
+export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth","list","loading","auth","social-button"]
 const examples: Record<DemoName, string> = {
   requirements: `S:Button({Name="Use feature",Requires="Feature",Callback=function() print("Feature action ran") end})
 S:Slider({Name="Feature amount",Requires="Feature",Min=1,Max=10,Default=3})
@@ -83,7 +83,27 @@ notes:Paragraph({Title="Drag or type",Content="Drag the notch, or click the numb
   dropdown: `S:Dropdown({Name="Mode",Options={"Explore","Build","Practice"},Default="Explore",Callback=function(v) print("Mode:",v) end})
 S:Dropdown({Name="Targets",Options={"Players","NPCs","Objects"},Multi=true,Default={"Players"},Callback=function(v) local a={} for k,on in v do if on then table.insert(a,k) end end print("Selected:",table.concat(a,", ")) end})`,
   input: `S:Input({Name="Profile name",Placeholder="Enter a name",Default="My profile",Callback=function(v) print("Profile name:",v) end})
-S:Input({Name="Live text",Placeholder="Type here",Finished=false,Callback=function(v) print("Live text:",v) end})`,
+S:Input({Name="Live text",Placeholder="Type here",Finished=false,Callback=function(v) print("Live text:",v) end})
+local more=Tab:Section({Name="Multiline",Side="Right"})
+more:Input({Name="Script",MultiLine=true,Lines=5,Code=true,Placeholder="-- paste a script",Default='print("Hello")\\nfor i = 1, 3 do\\n    print(i)\\nend',Callback=function(v) print("Script lines:",#string.split(v,"\\n")) end})`,
+  list: `local wp=S:List({Name="Waypoints",Columns={"Name","Position"},Widths={2,3},Items={{"Spawn","0, 5, 0"},{"Shop","42, 3, -18"},{"Arena","-120, 8, 64"}},Removable=true,Placeholder="No waypoints saved",
+  Callback=function(item,i) print("Selected:",item[1],"at row",i) end,OnRemove=function(item) print("Removed:",item[1]) end})
+local tools=Tab:Section({Name="Actions",Side="Right"})
+tools:Button({Name="Add waypoint",Callback=function() local n=#wp.Items+1 wp:Add({"Point "..n,math.random(-99,99)..", 4, "..math.random(-99,99)}) print("Added Point",n) end})
+tools:Button({Name="Clear list",Callback=function() wp:Clear() print("List cleared") end})`,
+  auth: '', // built by authDemo
+  'social-button': `local win=Hub:Window({Title="About",Description="Community and support",Icon="info",Width=480,Height=300})
+win:SocialButton({Discord="https://discord.gg/your-invite",Callback=function(url) print("Copied:",url) end})
+win:Section({Name="Community"}):Paragraph({Title="Join the server",Content="The Discord button copies the invite. Narrow windows keep only the logo."})
+S:Button({Name="Open About",Window=win})
+S:Paragraph({Title="Collapsible sections",Content="Click a section header, such as CONTROLS, to fold it."})
+task.defer(function() task.wait(0.3) win:Open() end)`,
+  loading: `S:Paragraph({Title="Loaded",Content="The card held the screen while the script fetched data, then handed over to the toolbar."})
+S:Button({Name="Run action",Callback=function() print("Hub is ready") end})
+task.spawn(function()
+  for i,step in {"Fetching game data","Building interface","Loading config"} do Hub:SetLoading(step,i/4) task.wait(0.7) end
+  Hub:FinishLoading()
+end)`,
   keybind: `S:Keybind({Name="Fly toggle",Default=Enum.KeyCode.F,Mode="Toggle",Callback=function(v) print("Fly:",v) end})
 S:Keybind({Name="Hold action",Default=Enum.KeyCode.Q,Mode="Hold",Callback=function(v) print("Holding:",v) end})
 local notes=Tab:Section({Name="Interaction",Side="Right"})
@@ -112,12 +132,35 @@ local actions=Tab:Section({Name="Pinning",Side="Right"})
 actions:Button({Name="Pin movement",Callback=function() S:Pin(Vector2.new(24,90)) print("Section pinned. Drag its header to move it.") end})
 actions:Button({Name="Unpin movement",Callback=function() S:Unpin() print("Section returned to its tab.") end})`,
 }
+// The auth gate runs before any hub exists, so its example replaces the shared hub scaffold.
+// Request stands in for the key server: it accepts RIFT-DEMO and answers with a hub script.
+const authDemo = (theme: string) => `local Rift=loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
+getgenv().DocsRift=Rift
+local hub=[==[
+local Rift=getgenv().DocsRift
+local Hub=Rift:CreateHub({Name="RiftUI example",Id="docs-example",HubIcon="rocket",ThemeName=${JSON.stringify(theme)},Setup=false,Settings=false,Loading={MinDuration=0.6}})
+local Tab=Hub:Tab({Name="Example",Icon="sliders-horizontal"})
+local S=Tab:Section({Name="Controls",Side="Left"})
+S:Paragraph({Title="Unlocked",Content="The server accepted the key and sent this hub, which the script then ran with loadstring."})
+S:Button({Name="Run action",Callback=function() print("Hub is ready") end})
+Hub:Open(Tab)
+]==]
+task.spawn(function()
+  local source=Rift:CreateAuth({Name="RiftUI example",Id="docs-auth",HubIcon="rocket",ThemeName=${JSON.stringify(theme)},Remember=false,
+    Note="Use the demo key RIFT-DEMO. A real gate sends the key to your server.",
+    GetKeyUrl="https://riftui.naymmm.lol/#auth",Discord="https://discord.gg/your-invite",
+    Request=function(key) task.wait(0.6) if key=="RIFT-DEMO" then return true,hub end return false,"Invalid key. Try RIFT-DEMO." end})
+  if not source then print("Auth closed") return end
+  print("Key accepted, loading the hub")
+  loadstring(source)()
+end)`
 export function demoSource(name: DemoName, theme = 'Graphite'): string {
   if (!themes.includes(theme as typeof themes[number])) theme = 'Graphite'
+  if (name === 'auth') return authDemo(theme)
   return [
     'local Rift=loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()',
     name === 'requirements' ? 'getgenv().featureReady=false' : '',
-    'local Hub=Rift:CreateHub({Name="RiftUI example",Id="docs-example",ThemeName=' + JSON.stringify(theme) + ',Setup=false,Settings=false' + (name === 'requirements' ? ',Requirements={Feature={Name="Feature API",Test=function() return getgenv().featureReady==true,"Enable the developer test to use this feature" end}}' : '') + (name === 'stealth' ? ',Stealth=true' : '') + '})',
+    'local Hub=Rift:CreateHub({Name="RiftUI example",Id="docs-example",ThemeName=' + JSON.stringify(theme) + ',Setup=false,Settings=false' + (name === 'loading' ? ',HubIcon="rocket",Loading={Manual=true,Subtitle="Fetching game data"}' : '') + (name === 'requirements' ? ',Requirements={Feature={Name="Feature API",Test=function() return getgenv().featureReady==true,"Enable the developer test to use this feature" end}}' : '') + (name === 'stealth' ? ',Stealth=true' : '') + '})',
     'local Tab=Hub:Tab({Name="' + (name === 'overview' ? 'Movement' : name === 'themes' ? 'Appearance' : 'Example') + '",Icon="' + (name === 'themes' ? 'palette' : 'sliders-horizontal') + '"})',
     name === 'overview' ? '' : 'local S=Tab:Section({Name="' + (name === 'pins' ? 'Movement' : 'Controls') + '",Side="Left"})',
     examples[name],

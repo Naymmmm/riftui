@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "f9669d1-dev",
+	Version = "51da011-dev",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -690,6 +690,30 @@ local function iconLabel(name: string?, size: number, color: Color3, props)
 	return img
 end
 
+-- A hub's own mark: a Lucide icon name, or an image (rbxassetid://…, an asset number, or a
+-- getcustomasset id). Images keep their colours and draw a little larger than line icons.
+-- Nil when there's nothing to draw, so callers fall back to the name's initial.
+local function hubMark(icon, size: number, theme, props)
+	if type(icon) == "string" and icon ~= "" then
+		local lucide = iconLabel(icon, size, theme.Text, props)
+		if lucide then return lucide end
+	end
+	local image
+	if type(icon) == "number" or (type(icon) == "string" and string.match(icon, "^%d+$")) then
+		image = "rbxassetid://" .. tostring(math.floor(tonumber(icon) or 0))
+	elseif type(icon) == "string" and (string.match(icon, "^rbxassetid://%d+$") or string.match(icon, "^rbxasset://") or localAssetIds[icon]) then
+		image = icon
+	end
+	-- stealth mode refuses remote images, so the initial stands in
+	if not image or (secureAssets() and not localImage(image)) then return nil end
+	local s = math.floor(size * 1.375 + 0.5)
+	local img = create("ImageLabel", { Name = "Icon", BackgroundTransparency = 1, Image = image, ScaleType = Enum.ScaleType.Fit, Size = UDim2.fromOffset(s, s) }, { corner(math.floor(s / 4)) })
+	for k, v in props or {} do
+		img[k] = v
+	end
+	return img
+end
+
 -- 9-slice soft shadow sized to its parent plus `spread` on every side
 local function shadow(parent: Instance, spread: number?, zIndex: number?, offsetY: number?)
 	if Assets.shadow == nil then
@@ -1012,6 +1036,7 @@ function RiftUI:CreateHub(options)
 		Id = id,
 		Name = options.Name or "Rift Hub",
 		Subtitle = options.Subtitle or "",
+		Icon = options.HubIcon,
 		Theme = theme,
 		ThemeName = themeName,
 		ToggleKey = toggleKey,
@@ -1030,6 +1055,7 @@ function RiftUI:CreateHub(options)
 	}, Hub)
 
 	assert(options.Stealth == nil or type(options.Stealth) == "boolean", "Stealth must be a boolean")
+	assert(options.HubIcon == nil or type(options.HubIcon) == "string" or type(options.HubIcon) == "number", "HubIcon must be a Lucide icon name or an image asset ID")
 	local stealth = options.Stealth
 	if stealth == nil then stealth = initialStealth end
 	self._stealthLocked = options.Stealth ~= nil or initialStealth
@@ -1181,6 +1207,10 @@ function RiftUI:CreateHub(options)
 		if self._open then self:_fitPanel(self._open, false) end
 	end)
 
+	if options.Loading then
+		self:_buildLoading(options.Loading)
+	end
+
 	self.CommandButton = create("TextButton", {
 		Name = "OpenCommands", BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
 		Size = UDim2.fromOffset(40, 40), LayoutOrder = -100, Parent = self.Dock,
@@ -1209,11 +1239,14 @@ function RiftUI:CreateHub(options)
 		if self._destroyed then
 			return
 		end
+		self:_loadingStep("Applying preferences", 0.45)
 		if options.Setup ~= false and not (saved and saved.Completed) and not self._replaying then
-			task.delay(0.35, function()
-				if not self._destroyed then
-					self:OpenSetup()
-				end
+			self:_afterLoading(function()
+				task.delay(0.35, function()
+					if not self._destroyed then
+						self:OpenSetup()
+					end
+				end)
 			end)
 		end
 		if options.Stealth then
@@ -1242,13 +1275,400 @@ function RiftUI:CreateHub(options)
 			end)
 		end
 		if language and language ~= "en" then self:SetLanguage(language, true) end
-		if next(self._requirements) then self:RunRequirements() end
+		if next(self._requirements) then
+			self:_loadingStep("Checking requirements", 0.65)
+			self:RunRequirements()
+		end
+		self:_loadingStep("Loading config", 0.85)
 		self:_autoload()
 		if RiftUI.State == "Building" or RiftUI.State == "Reinitializing" then
 			setState("Ready", self.Name)
 		end
+		if self._loading and not self._loading.Manual then
+			self:FinishLoading()
+		end
 	end)
 	return self
+end
+
+---------------------------------------------------------------- loading screen
+--[[
+	A small card that holds the screen while the hub builds. The dock stays down until it
+	leaves, and anything that would open over it (setup, Hub:Open) waits its turn.
+	Loading = true, or { Title, Subtitle, Icon, MinDuration, Manual }. With Manual = true the
+	card stays until Hub:FinishLoading(); Hub:SetLoading(status, progress) drives it.
+]]
+-- The floating card the loading screen and the auth gate share: shadow, fading body,
+-- outline and sheen, with a chip/title/subtitle head.
+local function floatingCard(parent: Instance, theme, width: number, z: number)
+	local holder = create("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 10),
+		Size = UDim2.new(1, -24, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ZIndex = z,
+		Parent = parent,
+	})
+	create("UISizeConstraint", { MaxSize = Vector2.new(width, 100000), Parent = holder })
+	shadow(holder, 30, z, 8)
+	local card = create("CanvasGroup", {
+		Name = "Card",
+		BackgroundColor3 = themeColor(theme, "Panel"),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		GroupTransparency = 1,
+		ZIndex = z + 1,
+		Parent = holder,
+	}, { corner(14), padding(16, 16, 16, 16), list(Enum.FillDirection.Vertical, 14) })
+	local outline = create("Frame", { Name = "Outline", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z + 2, Parent = holder }, {
+		corner(14),
+		stroke(themeColor(theme, "PanelStroke"), 1, 1),
+	})
+	sheen(holder, 16, theme, z + 2)
+	return holder, card, outline
+end
+
+local function cardHead(card: Instance, theme, title: string, subtitle: string?, icon: string?, z: number, rightInset: number?)
+	local head = create("Frame", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), ZIndex = z, Parent = card })
+	local chip = create("Frame", {
+		Name = "Chip",
+		BackgroundColor3 = themeColor(theme, "Tile"),
+		Size = UDim2.fromOffset(32, 32),
+		ZIndex = z,
+		Parent = head,
+	}, { corner(8), stroke(themeColor(theme, "TileStroke")) })
+	if not hubMark(icon, 16, theme, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = z + 1, Parent = chip }) then
+		text({ Parent = chip, Text = string.upper(string.sub(title, 1, 1)), FontFace = inter(Enum.FontWeight.SemiBold), Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = z + 1 })
+	end
+	local hasSub = type(subtitle) == "string" and subtitle ~= ""
+	local inset = 44 + (rightInset or 0)
+	text({ Parent = head, Name = "Title", Text = title, FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14, Position = UDim2.fromOffset(44, hasSub and 0 or 8), Size = UDim2.new(1, -inset, 0, 17), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = z + 1 })
+	if hasSub then
+		text({ Parent = head, Name = "Subtitle", Text = subtitle, TextSize = 12, TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(44, 17), Size = UDim2.new(1, -inset, 0, 15), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = z + 1 })
+	end
+	return head
+end
+
+local function showCard(holder, card, outline)
+	tween(holder, RISE, { Position = UDim2.fromScale(0.5, 0.5) })
+	tween(card, RISE, { GroupTransparency = 0 })
+	tween(outline:FindFirstChildOfClass("UIStroke"), RISE, { Transparency = 0 })
+end
+
+local function hideCard(holder, card, outline)
+	tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 0.5, -6) })
+	tween(outline:FindFirstChildOfClass("UIStroke"), FOLD, { Transparency = 1 })
+	local shade = holder:FindFirstChild("Shadow")
+	if shade then tween(shade, FOLD, { ImageTransparency = 1 }) end
+	return tween(card, FOLD, { GroupTransparency = 1 })
+end
+
+function Hub:_buildLoading(o)
+	o = type(o) == "table" and o or {}
+	assert(o.MinDuration == nil or type(o.MinDuration) == "number", "Loading.MinDuration must be a number")
+	local theme = self.Theme
+	local state = { Manual = o.Manual == true, MinDuration = o.MinDuration or 1, Started = os.clock(), Progress = 0, Queue = {} }
+	self._loading = state
+	self.DockHolder.Visible = false
+	self.Restore.Visible = false
+	local holder, card, outline = floatingCard(self.Gui, theme, 300, 95)
+	holder.Name = "Loading"
+	cardHead(card, theme, o.Title or self.Name, o.Subtitle or self.Subtitle, o.Icon or self.Icon, 96)
+	local foot = create("Frame", { Name = "Status", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 2, ZIndex = 96, Parent = card })
+	state.Status = text({ Parent = foot, Name = "Label", Text = self:T("Building interface"), TextSize = 11, TextColor3 = themeColor(theme, "SubText"), Size = UDim2.new(1, -44, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 97 })
+	state.Percent = text({ Parent = foot, Name = "Percent", Text = "0%", FontFace = MONO, TextSize = 11, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(44, 14), ZIndex = 97 })
+	local track = create("Frame", { Name = "Track", BackgroundColor3 = themeColor(theme, "Track"), BorderSizePixel = 0, Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 0, 3), ZIndex = 97, Parent = foot }, { corner(2) })
+	state.Fill = create("Frame", { Name = "Fill", BackgroundColor3 = themeColor(theme, "Accent"), BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 98, Parent = track }, { corner(2) })
+	state.Holder, state.Card, state.Outline = holder, card, outline
+	showCard(holder, card, outline)
+	self:_loadingStep("Building interface", 0.2)
+end
+
+function Hub:_loadingStep(status: string, progress: number)
+	local state = self._loading
+	if state and not state.Manual then self:SetLoading(status, progress) end
+end
+
+-- Update the loading card. Progress is 0–1 and never moves backwards; omit it to keep the bar.
+function Hub:SetLoading(status: string?, progress: number?)
+	local state = self._loading
+	if not state or state.Finishing then return end
+	if type(status) == "string" then state.Status.Text = self:T(status) end
+	if type(progress) == "number" then
+		state.Progress = math.max(state.Progress, math.clamp(progress, 0, 1))
+		state.Percent.Text = math.floor(state.Progress * 100 + 0.5) .. "%"
+		tween(state.Fill, SETTLE, { Size = UDim2.fromScale(state.Progress, 1) })
+	end
+end
+
+function Hub:IsLoading(): boolean
+	return self._loading ~= nil
+end
+
+-- Run fn once the loading card has gone, or now if there isn't one.
+function Hub:_afterLoading(fn)
+	if self._loading then table.insert(self._loading.Queue, fn) else fn() end
+end
+
+function Hub:FinishLoading()
+	local state = self._loading
+	if not state or state.Finishing then return end
+	state.Finishing = true
+	state.Status.Text = self:T("Ready")
+	state.Percent.Text = "100%"
+	tween(state.Fill, SETTLE, { Size = UDim2.fromScale(1, 1) })
+	task.spawn(function()
+		-- a card that flashes for a frame reads as a glitch, so it stays at least MinDuration
+		local wait = state.MinDuration - (os.clock() - state.Started)
+		task.wait(math.max(0.25, wait))
+		if self._destroyed then return end
+		hideCard(state.Holder, state.Card, state.Outline).Completed:Wait()
+		if self._destroyed then return end
+		state.Holder:Destroy()
+		self._loading = nil
+		self.Restore.Visible = UserInputService.TouchEnabled
+		if self._visible then
+			local holder, bottom = self.DockHolder, self:_dockBottom()
+			holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
+			holder.Visible = true
+			tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
+		end
+		for _, fn in state.Queue do task.spawn(fn) end
+	end)
+end
+
+---------------------------------------------------------------- auth gate
+--[[
+	Rift:CreateAuth asks for a key before any hub exists. The key goes to the author's server
+	as a bearer token; a 2xx answer carries the hub script, which CreateAuth returns for the
+	caller to loadstring. Anything already on the client can be edited, so the gate only
+	protects what the server holds back: keep the hub itself on the server.
+
+		local source, key = Rift:CreateAuth({ Name = "My Hub", Url = "https://auth.example.com/v1/script" })
+		if not source then return end
+		loadstring(source)()
+]]
+local AUTH_SCRIPT_LIMIT = 16 * 1024 * 1024
+
+local function authHwid(): string?
+	if typeof(gethwid) == "function" then
+		local ok, id = pcall(gethwid)
+		if ok and type(id) == "string" and id ~= "" then return id end
+	end
+	local ok, id = pcall(function() return game:GetService("RbxAnalyticsService"):GetClientId() end)
+	return ok and type(id) == "string" and id ~= "" and id or nil
+end
+
+-- A short, single-line reason from an error body: JSON { error } / { message }, or plain text.
+local function authReason(body): string?
+	if type(body) ~= "string" or body == "" or #body > 4096 then return nil end
+	local ok, data = pcall(function() return HttpService:JSONDecode(body) end)
+	local reason
+	if ok and type(data) == "table" then
+		reason = data.error or data.message
+	elseif not ok and not string.find(body, "<", 1, true) then
+		reason = body
+	end
+	if type(reason) ~= "string" then return nil end
+	reason = string.gsub(string.gsub(reason, "%c", " "), "^%s*(.-)%s*$", "%1")
+	if reason == "" then return nil end
+	return #reason > 140 and (string.sub(reason, 1, 140) .. "…") or reason
+end
+
+-- ok, scriptOrReason, retryable. Retryable failures (network, 429, 5xx) keep a saved key.
+local function authCheck(o, key: string)
+	if o.Request then
+		local ok, passed, result = pcall(o.Request, key)
+		if not ok then
+			recordError(tostring(passed), nil, "auth")
+			return false, "The key check failed. Try again.", true
+		end
+		if passed == true and type(result) == "string" and result ~= "" then return true, result end
+		return false, type(result) == "string" and result ~= "" and result or "Invalid key.", passed == nil
+	end
+	local httpRequest = (typeof(request) == "function" and request) or (typeof(http_request) == "function" and http_request)
+	if not httpRequest then return false, "This executor can't make HTTP requests.", false end
+	local headers = { Authorization = "Bearer " .. key, Accept = "text/plain, application/json" }
+	if o.SendHwid then headers["X-Rift-Hwid"] = authHwid() end
+	local ok, response = pcall(httpRequest, { Url = o.Url, Method = "GET", Headers = headers, Timeout = 20 })
+	local status = ok and type(response) == "table" and tonumber(response.StatusCode) or 0
+	if status == 0 then return false, "Couldn't reach the server. Check your connection and try again.", true end
+	if status >= 200 and status < 300 then
+		local body = response.Body
+		if type(body) ~= "string" or body == "" then return false, "The server sent an empty script.", true end
+		if #body > AUTH_SCRIPT_LIMIT then return false, "The server sent an oversized script.", false end
+		return true, body
+	end
+	local retry = status == 429 or status >= 500
+	local fallback = (status == 401 or status == 403) and "Invalid key."
+		or status == 429 and "Too many attempts. Wait a moment, then try again."
+		or ("The server returned HTTP " .. status .. ".")
+	return false, (not retry and authReason(response.Body)) or fallback, retry
+end
+
+function RiftUI:CreateAuth(options)
+	options = options or {}
+	assert(type(options) == "table", "CreateAuth expects an options table")
+	assert(options.Request == nil or type(options.Request) == "function", "Request must be a function")
+	if not options.Request then
+		local authority = type(options.Url) == "string" and string.match(options.Url, "^https://([^/%s?#]+)")
+		assert(authority and not string.find(authority, "@", 1, true) and not string.find(options.Url, "[%s#]"), "CreateAuth needs an HTTPS Url without credentials, or a Request function")
+	end
+	local id = hubId(options)
+	local name = options.Name or "Rift Hub"
+	local saved = readSetup(id)
+	local theme = buildTheme((saved and saved.Theme) or options.ThemeName or "Graphite", options.Theme)
+	local remember = options.Remember ~= false and hasFS
+	local keyPath = RiftUI.Folder .. "/" .. id .. "/auth.key"
+
+	local gui = create("ScreenGui", { Name = "RiftAuth", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 110 })
+	if typeof(protectgui) == "function" then pcall(protectgui, gui) end
+	gui.Parent = guiParent()
+	local holder, card, outline = floatingCard(gui, theme, 340, 10)
+	holder.Name = "Auth"
+	local head = cardHead(card, theme, options.Title or name, options.Subtitle or "Enter your key to continue", options.Icon or options.HubIcon, 11, 32)
+	local close = create("TextButton", {
+		Name = "Close", BackgroundColor3 = themeColor(theme, "Tile"), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 4, 0.5, 0), Size = UDim2.fromOffset(28, 28), ZIndex = 12, Parent = head,
+	}, { corner(7) })
+	if not iconLabel("x", 15, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 13, Parent = close }) then
+		text({ Parent = close, Text = "×", TextColor3 = themeColor(theme, "SubText"), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 13 })
+	end
+	close.MouseEnter:Connect(function() tween(close, FAST, { BackgroundTransparency = 0 }) end)
+	close.MouseLeave:Connect(function() tween(close, FAST, { BackgroundTransparency = 1 }) end)
+	if type(options.Note) == "string" and options.Note ~= "" then
+		text({ Parent = card, Name = "Note", Text = options.Note, TextSize = 12, TextColor3 = themeColor(theme, "SubText"), TextWrapped = true, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, ZIndex = 12 })
+	end
+	local field = create("Frame", { Name = "Field", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 3, ZIndex = 11, Parent = card })
+	local box = create("TextBox", {
+		Name = "KeyBox", BackgroundColor3 = themeColor(theme, "Field"), Size = UDim2.new(1, 0, 0, 34),
+		FontFace = MONO, TextSize = 12, TextColor3 = themeColor(theme, "Text"), Text = "",
+		PlaceholderText = options.Placeholder or "Paste your key", PlaceholderColor3 = themeColor(theme, "Muted"),
+		ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 12, Parent = field,
+	}, { corner(7), padding(0, 10) })
+	local boxStroke = stroke(themeColor(theme, "FieldStroke"))
+	boxStroke.Parent = box
+	local status = text({ Parent = field, Name = "Status", Text = "", TextSize = 11, TextColor3 = themeColor(theme, "Muted"), Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 12 })
+	local buttons = create("Frame", { Name = "Buttons", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 4, ZIndex = 11, Parent = card })
+	local links = create("Frame", { Name = "Links", BackgroundTransparency = 1, Size = UDim2.new(1, -110, 1, 0), ZIndex = 11, Parent = buttons }, {
+		list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+	})
+	local function button(label: string, primary: boolean, parent: Instance, order: number?)
+		local b = create("TextButton", {
+			Name = label, BackgroundColor3 = themeColor(theme, primary and "Accent" or "Tile"), Text = label,
+			FontFace = inter(Enum.FontWeight.Medium), TextSize = 13, TextColor3 = themeColor(theme, primary and "AccentText" or "Text"),
+			AutoButtonColor = false, Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = order or 0, ZIndex = 12, Parent = parent,
+		}, { corner(8), padding(0, 12) })
+		if not primary then
+			stroke(themeColor(theme, "TileStroke")).Parent = b
+			b.MouseEnter:Connect(function() tween(b, FAST, { BackgroundColor3 = themeColor(theme, "TileHover") }) end)
+			b.MouseLeave:Connect(function() tween(b, FAST, { BackgroundColor3 = themeColor(theme, "Tile") }) end)
+		end
+		return b
+	end
+	local submit = button("Continue", true, buttons)
+	submit.AnchorPoint = Vector2.new(1, 0)
+	submit.Position = UDim2.fromScale(1, 0)
+	submit.Size = UDim2.fromOffset(100, 32)
+	submit.AutomaticSize = Enum.AutomaticSize.None
+
+	local function say(message: string, tone: string?)
+		status.Text = message
+		setThemed(status, "TextColor3", themeColor(theme, tone or "Muted"))
+	end
+	local function copyLink(url: string, what: string)
+		if typeof(setclipboard) == "function" and pcall(setclipboard, url) then
+			say(what .. " link copied. Open it in your browser.", "Success")
+		else
+			say(url, "SubText")
+		end
+	end
+	if type(options.GetKeyUrl) == "string" and options.GetKeyUrl ~= "" then
+		button("Get key", false, links, 1).MouseButton1Click:Connect(function() copyLink(options.GetKeyUrl, "Key") end)
+	end
+	if type(options.Discord) == "string" and options.Discord ~= "" then
+		button("Discord", false, links, 2).MouseButton1Click:Connect(function() copyLink(options.Discord, "Discord") end)
+	end
+
+	local finished, result, acceptedKey, reason = false, nil, nil, nil
+	local busy = false
+	local function shake()
+		local x = { 7, -6, 4, -2, 0 }
+		task.spawn(function()
+			for _, dx in x do
+				holder.Position = UDim2.new(0.5, dx, 0.5, 0)
+				task.wait(0.035)
+			end
+		end)
+		tween(boxStroke, FAST, { Color = themeColor(theme, "Danger") })
+	end
+	local function attempt(key: string, fromFile: boolean)
+		if busy or finished then return end
+		key = string.gsub(key or "", "^%s*(.-)%s*$", "%1")
+		if key == "" then say("Enter your key.", "Danger") shake() return end
+		if #key > 512 or string.find(key, "%c") then say("That key isn't valid.", "Danger") shake() return end
+		busy = true
+		box.TextEditable = false
+		submit.Text = "Checking…"
+		say(fromFile and "Checking your saved key…" or "Checking key…")
+		tween(boxStroke, FAST, { Color = themeColor(theme, "FieldStroke") })
+		local ok, value, retry = authCheck(options, key)
+		busy = false
+		if finished or not gui.Parent then return end
+		box.TextEditable = true
+		submit.Text = "Continue"
+		if ok then
+			say("Key accepted. Loading " .. name .. "…", "Success")
+			tween(boxStroke, FAST, { Color = themeColor(theme, "Success") })
+			if remember then
+				pcall(function()
+					ensureFolder(RiftUI.Folder) ensureFolder(RiftUI.Folder .. "/" .. id)
+					writefile(keyPath, key)
+				end)
+			end
+			result, acceptedKey = value, key
+			task.wait(0.35)
+			finished = true
+		else
+			-- a rejected saved key is forgotten; one that only hit a network error is kept
+			if fromFile and not retry and typeof(delfile) == "function" then pcall(delfile, keyPath) end
+			say(value, "Danger")
+			shake()
+		end
+	end
+	submit.MouseButton1Click:Connect(function() task.spawn(attempt, box.Text, false) end)
+	box.FocusLost:Connect(function(enter) if enter then task.spawn(attempt, box.Text, false) end end)
+	box.Focused:Connect(function() if not busy then tween(boxStroke, FAST, { Color = themeColor(theme, "SubText") }) end end)
+	close.MouseButton1Click:Connect(function()
+		if finished then return end
+		reason, finished = "closed", true
+	end)
+
+	showCard(holder, card, outline)
+	if remember then
+		local ok, stored = pcall(function() return isfile(keyPath) and readfile(keyPath) or nil end)
+		if ok and type(stored) == "string" and stored ~= "" then
+			box.Text = stored
+			task.spawn(attempt, stored, true)
+		end
+	end
+	while not finished and gui.Parent do task.wait() end
+	if not finished then reason = "closed" end
+	if gui.Parent then
+		hideCard(holder, card, outline).Completed:Wait()
+		gui:Destroy()
+	end
+	if result then return result, acceptedKey end
+	return nil, reason or "closed"
+end
+
+-- Forget the key CreateAuth saved for a hub, e.g. from a "Log out" button.
+function RiftUI:ClearAuthKey(options)
+	local id = hubId(type(options) == "string" and { Id = options } or options or {})
+	if hasFS and typeof(delfile) == "function" then
+		pcall(delfile, RiftUI.Folder .. "/" .. id .. "/auth.key")
+	end
 end
 
 ---------------------------------------------------------------- developer-defined requirements
@@ -1603,6 +2023,11 @@ function Hub:_applySearch(query: string)
 			any = any or match
 		end
 		section.Frame.Visible = (any or query == "") and not section.Pinned
+		local peek = query ~= "" and any
+		if section._peek ~= peek then
+			section._peek = peek
+			section:_applyCollapse(false)
+		end
 	end
 	task.defer(function()
 		self:_fitPanel(tab, true)
@@ -1655,6 +2080,12 @@ end
 
 function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 	if self._visible == visible then
+		return
+	end
+	if self._loading then
+		-- the dock comes up when loading ends; until then only remember the choice
+		self._visible = visible
+		self.Restore.Text = visible and "Hide toolbar" or "Show toolbar"
 		return
 	end
 	self._visible = visible
@@ -1746,6 +2177,10 @@ function Hub:Open(tab)
 		end
 	end
 	if type(tab) ~= "table" or self._open == tab then
+		return
+	end
+	if self._loading then
+		self:_afterLoading(function() if not self._destroyed then self:Open(tab) end end)
 		return
 	end
 	local previous = self._open
@@ -2317,6 +2752,11 @@ function Tab:Section(options)
 		Size = UDim2.new(1, -pinRoom, 0, 1),
 		Parent = head,
 	})
+	-- Collapsible by default; the user's choice per section outlives the session.
+	local collapsible = options.Collapsible ~= false
+	local remembered = hub.SetupData and type(hub.SetupData.Collapsed) == "table" and hub.SetupData.Collapsed[section.Id]
+	section._collapsible = collapsible
+	section._collapsed = collapsible and (remembered == true or (remembered == nil and options.Collapsed == true))
 	local titleChip = create("Frame", {
 		Name = "Title",
 		BackgroundTransparency = 1,
@@ -2324,9 +2764,17 @@ function Tab:Section(options)
 		AutomaticSize = Enum.AutomaticSize.X,
 		ZIndex = 2,
 		Parent = head,
-	}, { padding(0, 8, 0, 0), create("UISizeConstraint", { MaxSize = Vector2.new(180, 26) }) })
-	text({
+	}, {
+		padding(0, 8, 0, 0),
+		create("UISizeConstraint", { MaxSize = Vector2.new(196, 26) }),
+		list(Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+	})
+	if collapsible then
+		section._chevron = iconLabel("chevron-down", 12, theme.Muted, { Rotation = section._collapsed and -90 or 0, ZIndex = 3, Parent = titleChip })
+	end
+	section._titleLabel = text({
 		Parent = titleChip,
+		LayoutOrder = 1,
 		Text = string.upper(section.Name),
 		TextSize = 11,
 		FontFace = inter(Enum.FontWeight.SemiBold),
@@ -2343,6 +2791,18 @@ function Tab:Section(options)
 	end
 	hub:_connect(titleChip:GetPropertyChangedSignal("AbsoluteSize"), placeRule)
 	placeRule()
+	if collapsible then
+		local toggle = create("TextButton", { Name = "Collapse", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.new(1, -pinRoom, 1, 0), ZIndex = 4, Parent = head })
+		hub:_connect(toggle.MouseButton1Click, function() section:SetCollapsed(not section._collapsed) end)
+		hub:_connect(toggle.MouseEnter, function()
+			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "Text"))
+			if section._chevron then setThemed(section._chevron, "ImageColor3", themeColor(theme, "SubText")) end
+		end)
+		hub:_connect(toggle.MouseLeave, function()
+			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "SubText"))
+			if section._chevron then setThemed(section._chevron, "ImageColor3", themeColor(theme, "Muted")) end
+		end)
+	end
 	if options.Pinnable ~= false then
 		local pin = create("TextButton", {
 			Name = "Pin",
@@ -2372,14 +2832,24 @@ function Tab:Section(options)
 			section:Pin()
 		end)
 	end
+	-- Rows sit in a clip that folds to the header when the section collapses.
+	local clip = create("Frame", {
+		Name = "RowsClip",
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = section._collapsed and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Parent = frame,
+	})
 	local rows = create("Frame", {
 		Name = "Rows",
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 1,
-		Parent = frame,
+		Parent = clip,
 	}, { list(Enum.FillDirection.Vertical, 0), padding(0, 1) })
+	section._rowsClip = clip
 	section.Frame = frame
 	section.Head = head
 	section.Rows = rows
@@ -2387,6 +2857,48 @@ function Tab:Section(options)
 	table.insert(self.Sections, section)
 	hub:_record(self, "Section", options, section)
 	return section
+end
+
+-- Fold the rows to the header, or open them. Search results peek inside collapsed sections
+-- without changing the saved choice.
+function Section:_applyCollapse(animate: boolean)
+	local clip = self._rowsClip
+	if not clip then return end
+	local shut = self._collapsed and not self._peek
+	if self._chevron then tween(self._chevron, FAST, { Rotation = shut and -90 or 0 }) end
+	if self._clipTween then self._clipTween:Cancel() self._clipTween = nil end
+	local function settle()
+		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
+		clip.Size = UDim2.new(1, 0, 0, 0)
+	end
+	if not animate then settle() return end
+	local scale = self.Hub._scale
+	clip.AutomaticSize = Enum.AutomaticSize.None
+	clip.Size = UDim2.new(1, 0, 0, clip.AbsoluteSize.Y / scale)
+	local tw = tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) })
+	self._clipTween = tw
+	tw.Completed:Connect(function(state)
+		if state == Enum.PlaybackState.Completed and self._clipTween == tw then
+			self._clipTween = nil
+			settle()
+		end
+	end)
+end
+
+function Section:SetCollapsed(collapsed: boolean, instant: boolean?)
+	if not self._collapsible or self._isGroup then return end
+	collapsed = collapsed == true
+	if self._collapsed == collapsed then return end
+	self._collapsed = collapsed
+	local hub = self.Hub
+	local map = table.clone(hub.SetupData and type(hub.SetupData.Collapsed) == "table" and hub.SetupData.Collapsed or {})
+	map[self.Id] = collapsed or nil
+	hub:_savePref("Collapsed", map)
+	self:_applyCollapse(not instant)
+end
+
+function Section:IsCollapsed(): boolean
+	return self._collapsed == true
 end
 
 function Section:_row(height: number?, name: string?)
@@ -2978,31 +3490,47 @@ end
 ---------------------------------------------------------------- Input
 function Section:Input(options)
 	local hub, theme = self.Hub, self.Hub.Theme
-	local row = self:_row(58, "Input_" .. (options.Name or ""))
+	-- MultiLine grows the field to Lines rows of wrapped text; Enter then starts a new line
+	-- and the value commits when focus leaves.
+	local multi = options.MultiLine == true
+	local mono = options.Numeric or options.Code
+	local textSize = options.Code and 12 or 13
+	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or 26
+	local row = self:_row(boxHeight + 32, "Input_" .. (options.Name or ""))
 	local c = self:_control("Input", options, row)
 	c.Value = options.Default or ""
+	c.MultiLine = multi
 	text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
 	local box = create("TextBox", {
 		Name = "Box",
 		BackgroundColor3 = themeColor(theme, "Field"),
 		Position = UDim2.fromOffset(0, 28),
-		Size = UDim2.new(1, 0, 0, 26),
-		FontFace = options.Numeric and MONO or inter(),
-		TextSize = 13,
+		Size = UDim2.new(1, 0, 0, boxHeight),
+		FontFace = mono and MONO or inter(),
+		TextSize = textSize,
 		TextColor3 = themeColor(theme, "Text"),
 		PlaceholderText = options.Placeholder or "",
 		PlaceholderColor3 = themeColor(theme, "Muted"),
 		Text = c.Value,
 		ClearTextOnFocus = options.ClearOnFocus == true,
+		MultiLine = multi,
+		TextWrapped = multi,
+		ClipsDescendants = multi,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = multi and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		Parent = row,
-	}, { corner(6), padding(0, 8) })
+	}, { corner(6), multi and padding(6, 8) or padding(0, 8) })
 	local boxStroke = stroke(themeColor(theme, "FieldStroke"))
 	boxStroke.Parent = box
 	function c:Set(value: string, silent: boolean?)
 		value = tostring(value or "")
 		if options.Numeric then
 			value = string.gsub(value, "[^%d%.%-]", "")
+		elseif not multi then
+			value = string.gsub(value, "[\r\n]+", " ")
+		end
+		if type(options.MaxLength) == "number" and utf8.len(value) and utf8.len(value) > options.MaxLength then
+			value = string.sub(value, 1, (utf8.offset(value, options.MaxLength + 1) or (#value + 1)) - 1)
 		end
 		self.Value = value
 		box.Text = value
@@ -3957,6 +4485,203 @@ function Section:Console(options)
 	return self.Hub:_finishRequiredControl(c)
 end
 
+---------------------------------------------------------------- List
+--[[
+	Rows of data the script owns: waypoints, saved positions, logs of players. An item is a
+	string or an array of cell strings; Columns adds a header and splits each row into cells.
+	Clicking a row selects it (Callback(item, index)); Removable adds a remove button that
+	calls OnRemove(item, index) and drops the row. Items are data, not settings, so lists
+	are left out of configs.
+]]
+function Section:List(options)
+	options = type(options) == "table" and options or { Name = tostring(options) }
+	local hub, theme = self.Hub, self.Hub.Theme
+	local columns = type(options.Columns) == "table" and #options.Columns > 0 and options.Columns or nil
+	local ncols = columns and #columns or 1
+	local widths = {}
+	do
+		local given, total = options.Widths, 0
+		for i = 1, ncols do
+			widths[i] = type(given) == "table" and tonumber(given[i]) or 1
+			total += widths[i]
+		end
+		for i = 1, ncols do widths[i] /= total end
+	end
+	local removable = options.Removable == true or options.OnRemove ~= nil
+	local selectable = options.Selectable ~= false
+	local height = math.max(60, options.Height or 156)
+	local headH = columns and 24 or 0
+	local top = options.Name and 26 or 0
+	local row = self:_row(top + headH + height + 4, "List_" .. (options.Name or ""))
+	local c = self:_control("List", options, row)
+	c.Items = {}
+	c.Selected = nil
+	local count
+	if options.Name then
+		text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, -80, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd })
+		count = text({ Parent = row, Name = "Count", Text = "", FontFace = MONO, TextSize = 11, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 4), Size = UDim2.fromOffset(80, 18) })
+	end
+	local frame = create("Frame", {
+		Name = "Box", BackgroundColor3 = themeColor(theme, "Field"), Position = UDim2.fromOffset(0, top),
+		Size = UDim2.new(1, 0, 0, headH + height), ClipsDescendants = true, Parent = row,
+	}, { corner(6), stroke(themeColor(theme, "FieldStroke")) })
+	local rightPad = removable and 30 or 0
+	local function cells(parent, values, header: boolean, selected: boolean)
+		local x = 0
+		for i = 1, ncols do
+			local w = widths[i]
+			text({
+				Parent = parent, Name = header and "Column" or "Cell", Text = values[i] or "",
+				FontFace = header and inter(Enum.FontWeight.Medium) or ((i > 1 and options.Monospace ~= false) and MONO or inter()),
+				TextSize = header and 11 or 12,
+				TextColor3 = themeColor(theme, header and "Muted" or ((i == 1 or selected) and "Text" or "SubText")),
+				Position = UDim2.new(x, i == 1 and 0 or 8, 0, 0),
+				Size = UDim2.new(w, (i == 1 and 0 or -8) - (i == ncols and rightPad or 0), 1, 0),
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			})
+			x += w
+		end
+	end
+	if columns then
+		local head = create("Frame", { Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, headH), Parent = frame }, { padding(0, 10) })
+		local names = {}
+		for i, col in columns do names[i] = hub:T(tostring(col)) end
+		cells(head, names, true, false)
+		create("Frame", { Name = "Divider", BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0, Position = UDim2.fromOffset(0, headH - 1), Size = UDim2.new(1, 0, 0, 1), Parent = frame })
+	end
+	local scroll = create("ScrollingFrame", {
+		Name = "Rows", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, headH), Size = UDim2.new(1, 0, 0, height),
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"), ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = frame,
+	}, { padding(4, 4), list(Enum.FillDirection.Vertical, 1) })
+	local empty = text({ Parent = frame, Name = "Empty", Text = options.Placeholder or "Nothing here yet", TextSize = 12, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, headH), Size = UDim2.new(1, 0, 0, height) })
+	local rows = {}
+	local function normalize(item)
+		if type(item) ~= "table" then item = { item } end
+		local out = {}
+		for i = 1, ncols do out[i] = item[i] ~= nil and tostring(item[i]) or "" end
+		return out
+	end
+	local function public(item)
+		return ncols == 1 and item[1] or table.clone(item)
+	end
+	local function paint(i)
+		local r = rows[i]
+		if not r then return end
+		local on = c.Selected == i
+		local goal = { BackgroundTransparency = (on or r.Hover) and 0 or 1 }
+		setThemed(r.Button, "BackgroundColor3", themeColor(theme, on and "TileActive" or "TileHover"))
+		tween(r.Button, FAST, goal)
+	end
+	-- rows are rebuilt on every change; their connections die with the buttons
+	local function render()
+		for _, r in rows do r.Button:Destroy() end
+		table.clear(rows)
+		for i, item in c.Items do
+			local b = create("TextButton", {
+				Name = "Item", BackgroundColor3 = themeColor(theme, "TileHover"), BackgroundTransparency = 1,
+				Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = i, Parent = scroll,
+			}, { corner(5), padding(0, 6, 0, 6) })
+			local r = { Button = b, Hover = false }
+			rows[i] = r
+			cells(b, item, false, c.Selected == i)
+			if removable then
+				local x = create("TextButton", {
+					Name = "Remove", BackgroundColor3 = themeColor(theme, "Tile"), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+					AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 2, 0.5, 0), Size = UDim2.fromOffset(22, 22), ZIndex = 2, Parent = b,
+				}, { corner(5) })
+				local ic = iconLabel("x", 13, theme.Muted, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 3, Parent = x })
+				if not ic then text({ Parent = x, Text = "×", TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 3 }) end
+				x.MouseEnter:Connect(function()
+					if ic then setThemed(ic, "ImageColor3", themeColor(theme, "Danger")) end
+				end)
+				x.MouseLeave:Connect(function()
+					if ic then setThemed(ic, "ImageColor3", themeColor(theme, "Muted")) end
+				end)
+				x.MouseButton1Click:Connect(function()
+					local index = table.find(c.Items, item)
+					if not index or not c:IsAvailable() then return end
+					c:Remove(index)
+					if options.OnRemove then
+						task.spawn(function()
+							local ok, err = pcall(options.OnRemove, public(item), index)
+							if not ok then recordError(tostring(err), nil, c.Name) warn("[RiftUI] " .. c.Name .. " OnRemove error: " .. tostring(err)) end
+						end)
+					end
+				end)
+			end
+			b.MouseEnter:Connect(function() r.Hover = true paint(i) end)
+			b.MouseLeave:Connect(function() r.Hover = false paint(i) end)
+			if selectable then
+				b.MouseButton1Click:Connect(function() c:Select(i) end)
+			end
+			paint(i)
+		end
+		empty.Visible = #c.Items == 0
+		if count then
+			local n = #c.Items
+			count.Text = n == 0 and "" or (n .. (n == 1 and " item" or " items"))
+		end
+	end
+	function c:Select(index: number?, silent: boolean?)
+		if index ~= nil and not self.Items[index] then return end
+		self.Selected = index
+		render()
+		if not silent and index then self:_emit(public(self.Items[index]), index) end
+	end
+	function c:Add(item, index: number?)
+		local entry = normalize(item)
+		index = index and math.clamp(math.floor(index), 1, #self.Items + 1) or (#self.Items + 1)
+		table.insert(self.Items, index, entry)
+		if self.Selected and self.Selected >= index then self.Selected += 1 end
+		local max = options.MaxItems
+		while type(max) == "number" and #self.Items > max do
+			table.remove(self.Items, 1)
+			if self.Selected then self.Selected = self.Selected > 1 and self.Selected - 1 or nil end
+			index -= 1
+		end
+		render()
+		return math.max(index, 1)
+	end
+	function c:Remove(index: number)
+		if not self.Items[index] then return nil end
+		local item = table.remove(self.Items, index)
+		if self.Selected == index then
+			self.Selected = nil
+		elseif self.Selected and self.Selected > index then
+			self.Selected -= 1
+		end
+		render()
+		return item
+	end
+	function c:Update(index: number, item)
+		if not self.Items[index] then return end
+		self.Items[index] = normalize(item)
+		render()
+	end
+	function c:Set(items)
+		table.clear(self.Items)
+		for _, item in type(items) == "table" and items or {} do table.insert(self.Items, normalize(item)) end
+		self.Selected = nil
+		render()
+	end
+	function c:Clear() self:Set({}) end
+	function c:Get()
+		local out = {}
+		for i, item in self.Items do out[i] = public(item) end
+		return out
+	end
+	function c:GetSelected()
+		local item = self.Selected and self.Items[self.Selected]
+		if not item then return nil, nil end
+		return public(item), self.Selected
+	end
+	c:Set(options.Items)
+	return self.Hub:_finishRequiredControl(c)
+end
+
 ---------------------------------------------------------------- PlayerPicker
 local function initials(name: string): string
 	local a, b = string.match(name, "^%W*(%w)%w*%W+(%w)")
@@ -4226,7 +4951,7 @@ function Section:Unpin()
 	for _, c in self._pinConns or {} do
 		c:Disconnect()
 	end
-	self.Rows.Parent = self.Frame
+	self.Rows.Parent = self._rowsClip or self.Frame
 	self.Frame.Visible = true
 	if self.Card then
 		self.Card:Destroy()
@@ -5236,7 +5961,9 @@ function Hub:SetWatermark(on, quiet: boolean?)
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Active = true, ZIndex = 9, Parent = self.Gui,
 	}, { corner(7), stroke(themeColor(theme, "PanelStroke")), padding(0, 10, 0, 8), list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
 	local scale = create("UIScale", { Scale = 0.96, Parent = frame })
-	create("Frame", { Name = "Mark", BackgroundColor3 = themeColor(theme, "Accent"), BorderSizePixel = 0, Size = UDim2.fromOffset(2, 12), LayoutOrder = 1, ZIndex = 10, Parent = frame }, { corner(1) })
+	if not hubMark(self.Icon, 14, theme, { LayoutOrder = 1, ZIndex = 10, Parent = frame }) then
+		create("Frame", { Name = "Mark", BackgroundColor3 = themeColor(theme, "Accent"), BorderSizePixel = 0, Size = UDim2.fromOffset(2, 12), LayoutOrder = 1, ZIndex = 10, Parent = frame }, { corner(1) })
+	end
 	text({ Parent = frame, Name = "HubName", Text = self.Name, TextSize = 12, FontFace = inter(Enum.FontWeight.SemiBold), Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, ZIndex = 10 })
 	local order = 2
 	local function field(name)
@@ -5628,9 +6355,9 @@ function Hub:Window(options)
 		text({ Parent = chip, Text = string.upper(string.sub(win.Title, 1, 1)), FontFace = inter(Enum.FontWeight.SemiBold), Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 74 })
 	end
 	local hasSub = (win.Description or "") ~= ""
-	text({ Parent = body, Name = "Title", Text = win.Title, FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15, Position = UDim2.fromOffset(60, hasSub and 13 or 21), Size = UDim2.new(1, -120, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 73 })
+	win._titleLabel = text({ Parent = body, Name = "Title", Text = win.Title, FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15, Position = UDim2.fromOffset(60, hasSub and 13 or 21), Size = UDim2.new(1, -120, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 73 })
 	if hasSub then
-		text({ Parent = body, Name = "Description", Text = win.Description, TextSize = 12, TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(60, 31), Size = UDim2.new(1, -120, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 73 })
+		win._descriptionLabel = text({ Parent = body, Name = "Description", Text = win.Description, TextSize = 12, TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(60, 31), Size = UDim2.new(1, -120, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 73 })
 	end
 	local close = create("TextButton", { Name = "CloseWindow", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 8), Size = UDim2.fromOffset(44, 44), ZIndex = 74, Parent = body })
 	local closeIcon = iconLabel("x", 16, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 75, Parent = close })
@@ -5661,6 +6388,112 @@ function Hub:Window(options)
 	table.insert(self.Windows, win)
 	self:_record(self, "Window", options, win)
 	return win
+end
+
+---------------------------------------------------------------- social buttons
+-- Brand colours and marks are the platforms' own; they don't follow the theme.
+local SOCIALS = {
+	Discord = {
+		Label = "Discord",
+		Color = Color3.fromRGB(88, 101, 242), -- Blurple, #5865F2
+		Hover = Color3.fromRGB(71, 82, 196),
+		Asset = "discord-1.png",
+		Remote = "assets/brand/discord.png",
+		Url = function(value: string): string?
+			value = string.gsub(value, "^%s*(.-)%s*$", "%1")
+			if string.match(value, "^[%w%-]+$") then return "https://discord.gg/" .. value end
+			local code = string.match(value, "^https://discord%.gg/([%w%-]+)/?$")
+				or string.match(value, "^https://discord%.com/invite/([%w%-]+)/?$")
+				or string.match(value, "^https://discordapp%.com/invite/([%w%-]+)/?$")
+			return code and ("https://discord.gg/" .. code) or nil
+		end,
+	},
+}
+
+local function brandMark(platform: string)
+	local spec = SOCIALS[platform]
+	Assets.brands = Assets.brands or {}
+	if Assets.brands[platform] == nil then
+		-- a missing brand mark leaves the label alone; it must not switch off every icon
+		local failed = Assets.failed
+		Assets.brands[platform] = customAsset(spec.Asset, spec.Remote) or false
+		Assets.failed = failed
+	end
+	return Assets.brands[platform] or nil
+end
+
+--[[
+	A brand-coloured button in the window header that copies an invite link.
+		Window:SocialButton({ Discord = "https://discord.gg/your-invite" })
+	A bare invite code works too. Narrow windows drop the label and keep the mark.
+]]
+function Window:SocialButton(options)
+	assert(type(options) == "table", "SocialButton expects an options table")
+	local platform, raw
+	for name in SOCIALS do
+		if options[name] ~= nil then
+			assert(platform == nil, "SocialButton takes one platform per button")
+			platform, raw = name, options[name]
+		end
+	end
+	assert(platform, "SocialButton needs a platform, such as Discord = \"https://discord.gg/...\"")
+	local spec = SOCIALS[platform]
+	local url = type(raw) == "string" and spec.Url(raw)
+	assert(url, platform .. " needs an invite link, such as https://discord.gg/your-invite")
+	local hub = self.Hub
+	if self._social then self._social:Destroy() end
+	local button = create("TextButton", {
+		Name = "Social_" .. platform, BackgroundColor3 = spec.Color, Text = "", AutoButtonColor = false,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0, 30), Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X, ZIndex = 74, Parent = self.Body,
+	}, { corner(8), padding(0, 10), list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center) })
+	local mark = brandMark(platform)
+	if mark then
+		create("ImageLabel", { Name = "Mark", BackgroundTransparency = 1, Image = mark, ImageColor3 = Color3.new(1, 1, 1), ScaleType = Enum.ScaleType.Fit, Size = UDim2.fromOffset(18, 18), ZIndex = 75, Parent = button })
+	end
+	local label = text({ Parent = button, Name = "Label", Text = hub:T(options.Label or spec.Label), FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 13, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, ZIndex = 75 })
+	create("UISizeConstraint", { MinSize = Vector2.new(34, 30), Parent = button })
+	local function fit()
+		-- the title gives up the room the button takes; a narrow window keeps only the mark
+		label.Visible = not mark or (self.Holder.AbsoluteSize.X / hub._scale) >= 420
+		local w = button.AbsoluteSize.X / hub._scale
+		for _, l in { self._titleLabel, self._descriptionLabel } do
+			if l then l.Size = UDim2.new(1, -120 - math.ceil(w) - 6, l.Size.Y.Scale, l.Size.Y.Offset) end
+		end
+	end
+	local conns = {
+		button:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit),
+		self.Holder:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit),
+		button.MouseEnter:Connect(function() tween(button, FAST, { BackgroundColor3 = spec.Hover }) hub:_showTip(button, url) end),
+		button.MouseLeave:Connect(function() tween(button, FAST, { BackgroundColor3 = spec.Color }) if hub._tipFor == button then hub:_hideTip() end end),
+		button.MouseButton1Click:Connect(function()
+			if typeof(setclipboard) == "function" and pcall(setclipboard, url) then
+				hub:Notify({ Title = platform .. " invite copied", Content = "Paste it into your browser or " .. platform .. ".", Icon = "check", Duration = 3 })
+			else
+				hub:Notify({ Title = platform .. " invite", Content = url, Duration = 8 })
+			end
+			if type(options.Callback) == "function" then task.spawn(options.Callback, url) end
+		end),
+	}
+	fit()
+	local social = { Platform = platform, Url = url, Frame = button, _internal = self._internal }
+	function social:SetVisible(v: boolean)
+		button.Visible = v
+	end
+	local window = self
+	function social:Destroy()
+		for _, c in conns do c:Disconnect() end
+		button:Destroy()
+		if window._social == social then
+			window._social = nil
+			for _, l in { window._titleLabel, window._descriptionLabel } do
+				if l then l.Size = UDim2.new(1, -120, l.Size.Y.Scale, l.Size.Y.Offset) end
+			end
+		end
+	end
+	self._social = social
+	hub:_record(self, "SocialButton", options, social)
+	return social
 end
 
 function Window:_layoutStrip()
@@ -6085,6 +6918,7 @@ function Hub:OpenCommandPalette()
 			group:SetOpen(true, true)
 			group = group.Parent
 		end
+		if group and group.SetCollapsed then group:SetCollapsed(false, true) end
 		if entry.Window then
 			local win = entry.Window
 			win:Open()
@@ -8519,6 +9353,7 @@ function Hub:Reinitialize()
 	local ok, err = xpcall(function()
 		local rebuildOptions = table.clone(self.Options)
 		rebuildOptions.Stealth = stealth
+		rebuildOptions.Loading = nil
 		local fresh = RiftUI:CreateHub(rebuildOptions)
 		fresh._stealthLocked = self._stealthLocked
 		fresh._replaying = true

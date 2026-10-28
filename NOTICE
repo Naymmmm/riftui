@@ -6,6 +6,9 @@ Third-party assets retain their respective licenses and rights:
 - Lucide icons: ISC License (lucide-static package).
 - Inter 4.1 TTF files: Copyright (c) 2016 The Inter Project Authors, SIL Open
   Font License 1.1. See public/assets/fonts/inter-4.1/LICENSE.txt and provenance.json.
+- The Discord logo (public/assets/brand/discord.png) is a trademark of Discord
+  Inc., used unaltered under the Discord brand guidelines
+  (https://discord.com/branding). Its SVG path comes from simple-icons (CC0-1.0).
 - Web fonts are loaded from Google Fonts under their individual licenses.
 - public/avatars contains cached Roblox thumbnails for the simulator's sample
   roster. These are preview fixtures, not RiftUI artwork; their source URLs

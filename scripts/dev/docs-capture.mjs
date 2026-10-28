@@ -44,7 +44,7 @@ async function shot(file, demo, state = 'initial', theme = 'Graphite') {
   provenance.push({ file: file + '.webp', origin, cssWidth: 660, cssHeight: 500, pixelRatio: 2 })
 }
 try {
-  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth"]) {
+  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth","list","loading","auth","social-button"]) {
     if (only && only !== demo) continue
     await open(demo)
     if (demo === 'dropdown') await clickNode({ name: 'Chip' })
