@@ -3355,6 +3355,12 @@ defineClass("GetTextBoundsParams", "Instance", {
 })
 defineClass("TextService", "Instance", {
 	methods = {
+		GetFamilyInfoAsync = function(_, family)
+			if not host.font then error("local font registration unavailable") end
+			local result = host.font(family)
+			if string.sub(result, 1, 4) == "ERR\31" then error(string.sub(result, 5)) end
+			return jsonDecode(result)
+		end,
 		GetTextSize = function(_, text, size, font, frame)
 			local f = typeof(font) == "Font" and font or E.fontFromEnum(E.coerceEnum("Font", font) or enums.Font.SourceSans)
 			local w = frame and frame.X or 0

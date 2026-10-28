@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test:browser": "node scripts/dev/binary-check.mjs && node scripts/dev/runtime-check.mjs && node scripts/dev/palette-check.mjs && node scripts/dev/components-check.mjs && node scripts/dev/config-check.mjs && node scripts/dev/requirements-check.mjs && node scripts/dev/stealth-check.mjs",
+    "test:browser": "node scripts/dev/binary-check.mjs && node scripts/dev/runtime-check.mjs && node scripts/dev/palette-check.mjs && node scripts/dev/components-check.mjs && node scripts/dev/config-check.mjs && node scripts/dev/requirements-check.mjs && node scripts/dev/stealth-check.mjs && node scripts/dev/fonts-check.mjs",
     "docs:images": "node scripts/dev/docs-capture.mjs",
     "docs:check": "node scripts/dev/docs-check.mjs",
     "icons": "node scripts/build-icons.mjs",

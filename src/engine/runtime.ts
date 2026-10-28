@@ -6,7 +6,8 @@ import { Scene } from './scene'
 import { Layout } from './layout'
 import { Renderer } from './render'
 import { Input } from './input'
-import { measure } from './text'
+import { measure, clearMeasureCache } from './text'
+import { LocalFonts } from './fonts'
 import { b64ToBytes, bytesToB64, Vfs } from './vfs'
 import { TextTransfers } from './transfers'
 import { executorCrypto } from './crypto'
@@ -43,6 +44,7 @@ export class Runtime {
   private generation = 0
   // A state must outlive its pending Luau/host calls, including during startup.
   private lifecycle: Promise<void> = Promise.resolve()
+  private fonts: LocalFonts
   private servedNotice = false
   private transfers = new TextTransfers()
   frameTime = 0
@@ -55,6 +57,7 @@ export class Runtime {
     public vfs: Vfs,
     getScale: () => number,
   ) {
+    this.fonts = new LocalFonts(vfs, () => { clearMeasureCache(); this.forceRender() })
     this.renderer = new Renderer(stage.querySelector('.rbx-root') as HTMLElement, this.scene, this.layout, vfs)
     this.renderer.onImageWarning = (m) => this.log('warn', m)
     this.input = new Input(viewport, stage, this.scene, this.layout, getScale)
@@ -106,6 +109,10 @@ export class Runtime {
       crypto: async (op: string, data: string, key: string, iv: string) => {
         try { return this.transfers.pack(await executorCrypto(op, data, key, iv)) }
         catch { return 'ERR' + SEP + 'Crypto operation failed' }
+      },
+      font: async (family: string) => {
+        try { return await this.fonts.load(family) }
+        catch (error) { return 'ERR' + SEP + String(error) }
       },
       profile: () => this.profile,
       register: (step: LuauFn, run: LuauFn) => {
@@ -298,6 +305,7 @@ export class Runtime {
       }
     }
     this.state = null
+    this.fonts.clear()
     this.transfers.clear()
     this.step = null
     this.run = null

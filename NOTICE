@@ -4,6 +4,8 @@ https://mozilla.org/MPL/2.0/ or in LICENSE.
 
 Third-party assets retain their respective licenses and rights:
 - Lucide icons: ISC License (lucide-static package).
+- Inter 4.1 TTF files: Copyright (c) 2016 The Inter Project Authors, SIL Open
+  Font License 1.1. See public/assets/fonts/inter-4.1/LICENSE.txt and provenance.json.
 - Web fonts are loaded from Google Fonts under their individual licenses.
 - public/avatars contains cached Roblox thumbnails for the simulator's sample
   roster. These are preview fixtures, not RiftUI artwork; their source URLs

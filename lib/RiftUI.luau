@@ -41,6 +41,8 @@ end)
 local bootStealth = initialStealth
 local secureHubs = setmetatable({}, { __mode = "k" })
 local localAssetIds = {}
+local secureFontFamily = nil
+local secureFontState = "idle"
 local watchedAssets = setmetatable({}, { __mode = "k" })
 local function secureAssets()
 	return bootStealth or next(secureHubs) ~= nil
@@ -57,9 +59,9 @@ local function secureProperty(prop, value)
 	if (prop == "Image" or prop == "HoverImage" or prop == "PressedImage") and not localImage(value) then return "" end
 	if prop == "FontFace" and typeof(value) == "Font" then
 		local family = value.Family
-		if type(family) == "string" and (string.match(family, "^rbxassetid://") or string.match(family, "^https?://")) then
+		if type(family) == "string" and not localAssetIds[family] and (string.match(family, "^rbxassetid://") or string.match(family, "^https?://") or (secureFontFamily and family == Font.fromEnum(Enum.Font.BuilderSans).Family)) then
 			local fallback = Font.fromEnum(Enum.Font.BuilderSans)
-			return Font.new(fallback.Family, value.Weight, value.Style)
+			return Font.new(secureFontFamily or fallback.Family, value.Weight, value.Style)
 		end
 	end
 	return value
@@ -187,7 +189,7 @@ local DefaultTheme = {
 
 local FONT_ID = "rbxassetid://12187365364" -- Inter
 local function inter(weight)
-	local family = secureAssets() and Font.fromEnum(Enum.Font.BuilderSans).Family or FONT_ID
+	local family = secureAssets() and (secureFontFamily or Font.fromEnum(Enum.Font.BuilderSans).Family) or FONT_ID
 	return Font.new(family, weight or Enum.FontWeight.Regular)
 end
 local MONO = Font.fromName("RobotoMono", Enum.FontWeight.Medium)
@@ -541,6 +543,79 @@ local function customAsset(fileName: string, remote: string): string?
 	end
 	if type(result) == "string" then localAssetIds[result] = true end
 	return result
+end
+
+-- Family JSON is rebuilt from this session's content IDs; cached IDs may expire.
+function RiftUI:GetSecureFontStatus()
+	return secureFontState, secureFontFamily
+end
+
+function RiftUI:LoadSecureFont()
+	if secureFontState == "loading" or secureFontState == "ready" then return secureFontState == "ready" end
+	secureFontState = "loading"
+	local ok, result = pcall(function()
+		assert(hasAssets, "local assets unavailable")
+		local folder = (self.AssetCacheFolder or (self.Folder .. "/assets")) .. "/fonts/inter-4.1"
+		local prefix = ""
+		for part in string.gmatch(folder, "[^/]+") do
+			prefix = prefix == "" and part or prefix .. "/" .. part
+			ensureFolder(prefix)
+		end
+		local faces = {}
+		for _, face in { { "Regular", 400 }, { "Medium", 500 }, { "SemiBold", 600 }, { "Bold", 700 } } do
+			local file = "Inter-" .. face[1] .. ".ttf"
+			local path = folder .. "/" .. file
+			local function valid(bytes)
+				return type(bytes) == "string" and #bytes > 1024 and #bytes < 2097152 and (string.sub(bytes, 1, 4) == "\0\1\0\0" or string.sub(bytes, 1, 4) == "OTTO")
+			end
+			local bytes = isfile(path) and readfile(path) or nil
+			if not valid(bytes) then
+				bytes = game:HttpGet(self.AssetBase .. "assets/fonts/inter-4.1/" .. file)
+				assert(valid(bytes), "invalid font download")
+				writefile(path, bytes)
+			end
+			local asset = getcustomasset(path)
+			assert(type(asset) == "string" and asset ~= "", "font asset registration failed")
+			table.insert(faces, { name = face[1], weight = face[2], style = "normal", assetId = asset })
+		end
+		local json = HttpService:JSONEncode({ name = "Inter", faces = faces })
+		local hash = 5381
+		for i = 1, #json do hash = (hash * 33 + string.byte(json, i)) % 4294967296 end
+		local path = folder .. "/Inter-" .. string.format("%08x", hash) .. ".font"
+		writefile(path, json)
+		local family = getcustomasset(path)
+		assert(type(family) == "string" and family ~= "", "font family registration failed")
+		local info = service("TextService"):GetFamilyInfoAsync(family)
+		assert(type(info) == "table" and type(info.Faces) == "table" and #info.Faces >= 4, "font family could not be loaded")
+		Font.new(family, Enum.FontWeight.Regular)
+		return family
+	end)
+	if not ok then
+		secureFontState = "failed"
+		recordError("local Inter font unavailable: " .. tostring(result), nil, "fonts")
+		return false
+	end
+	secureFontFamily = result
+	localAssetIds[result] = true
+	secureFontState = "ready"
+	if secureAssets() then
+		local fallback = Font.fromEnum(Enum.Font.BuilderSans).Family
+		for _, hub in self.Hubs do
+			if not hub._destroyed then
+				for _, inst in hub.Gui:GetDescendants() do
+					if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+						local font = inst.FontFace
+						if font.Family == fallback or font.Family == FONT_ID then inst.FontFace = Font.new(result, font.Weight, font.Style) end
+					end
+				end
+			end
+		end
+	end
+	return true
+end
+
+local function queueSecureFont()
+	if secureAssets() and secureFontState == "idle" then task.defer(function() RiftUI:LoadSecureFont() end) end
 end
 
 local function iconIndex(name: string): number?
@@ -1118,6 +1193,7 @@ function RiftUI:CreateHub(options)
 		self:_buildSettings()
 	end
 	table.insert(RiftUI.Hubs, self)
+	queueSecureFont()
 	registry[id] = self
 	self:_registerSetupFlags()
 	setState("Building", self.Name)
@@ -1938,6 +2014,7 @@ function Hub:SetStealth(on: boolean)
 	on = on == true
 	self.Stealth = on
 	secureHubs[self] = on and true or nil
+	queueSecureFont()
 	if on then
 		-- Inspect live instances too; startup mode is needed to avoid earlier loads.
 		for _, hub in RiftUI.Hubs do

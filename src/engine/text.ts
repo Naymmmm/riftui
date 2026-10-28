@@ -3,6 +3,7 @@
 // says so in the Properties panel.
 
 import type { FontVal } from './scene'
+import { localFontCss } from './fonts'
 
 const EXACT: Record<string, string> = {
   'rbxassetid://12187365364': 'Inter',
@@ -37,12 +38,14 @@ function familyKey(family: string): string {
 
 export function cssFamily(font: FontVal | undefined): string {
   if (!font) return 'Inter'
+  const local = localFontCss(font.family)
+  if (local) return local + ', system-ui, sans-serif'
   const key = familyKey(font.family)
   return (EXACT[key] ?? SUBSTITUTE[key]?.[0] ?? 'Inter') + ', Inter, system-ui, sans-serif'
 }
 
 export function fontNote(font: FontVal | undefined): string | null {
-  if (!font) return null
+  if (!font || localFontCss(font.family)) return null
   const key = familyKey(font.family)
   if (EXACT[key]) return null
   if (SUBSTITUTE[key]) return SUBSTITUTE[key][1]
