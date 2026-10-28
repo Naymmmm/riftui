@@ -382,6 +382,10 @@ function E.run(source: string, chunkname: string)
 		return false
 	end
 	task.spawn(fn)
+	if not E.guestStarted and E.simGuest then
+		E.guestStarted = true
+		task.spawn(E.simGuest)
+	end
 	E.ensureLayout()
 	return true
 end

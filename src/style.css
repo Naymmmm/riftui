@@ -457,6 +457,10 @@ input {
   width: 20px;
   height: 20px;
 }
+.rbx-editor::placeholder {
+  color: var(--ph);
+  opacity: 1;
+}
 .rbx-editor::selection {
   background: rgba(255, 255, 255, 0.3);
 }

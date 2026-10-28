@@ -611,6 +611,10 @@ defineClass("Player", "Instance", {
 		GetMouse = function(self)
 			return E.mouse
 		end,
+		GetNetworkPing = function()
+			-- one-way latency in seconds, wandering like a real connection
+			return 0.03 + 0.012 * math.sin(os.clock() * 0.7) + math.random() * 0.004
+		end,
 		Kick = function(_, msg)
 			E.host.warn("Player:Kick called: " .. tostring(msg))
 		end,

@@ -1532,11 +1532,17 @@ local function setParent(inst, newParent)
 	end
 	if old then
 		fireIf(D[old], "ChildRemoved", inst)
+		if d.cls.name == "Player" and D[old].cls.name == "Players" then
+			fireIf(D[old], "PlayerRemoving", inst)
+		end
 	end
 	if newParent then
 		local nd = D[newParent]
 		table.insert(nd.children, inst)
 		fireIf(nd, "ChildAdded", inst)
+		if d.cls.name == "Player" and nd.cls.name == "Players" then
+			fireIf(nd, "PlayerAdded", inst)
+		end
 		local anc = newParent
 		while anc do
 			local ad = D[anc]
@@ -2728,6 +2734,10 @@ defineClass("Player", "Instance", {
 		GetMouse = function(self)
 			return E.mouse
 		end,
+		GetNetworkPing = function()
+			-- one-way latency in seconds, wandering like a real connection
+			return 0.03 + 0.012 * math.sin(os.clock() * 0.7) + math.random() * 0.004
+		end,
 		Kick = function(_, msg)
 			E.host.warn("Player:Kick called: " .. tostring(msg))
 		end,
@@ -3584,6 +3594,41 @@ setProp(playerGui, "Parent", player, true)
 E.player = player
 E.mouse = newInstance("Mouse", true)
 
+-- A small server so player pickers and lists have someone to show. One guest drifts in
+-- and out every so often to exercise join and leave handling.
+local roster = {
+	{ "Builderman", "builderman", 156 },
+	{ "Noob", "Noob_2009", 20091 },
+	{ "Sniper", "xXSniperXx", 48213 },
+	{ "Cool Kid", "CoolKid42", 77042 },
+	{ "Bacon", "BaconHair", 31337 },
+	{ "Telamon", "Telamon", 261 },
+	{ "Shedletsky", "Shedletsky", 1 + 2 },
+}
+local function addPlayer(display, name, id)
+	local p = newInstance("Player", true)
+	setProp(p, "Name", name, true)
+	setProp(p, "DisplayName", display, true)
+	setProp(p, "UserId", id, true)
+	setProp(p, "Parent", services.Players, true)
+	return p
+end
+for _, r in roster do
+	addPlayer(r[1], r[2], r[3])
+end
+E.simGuest = function()
+	local guest
+	while true do
+		task.wait(guest and 14 or 9)
+		if guest then
+			setProp(guest, "Parent", nil, true)
+			guest = nil
+		else
+			guest = addPlayer("Guest", "Guest_" .. math.random(1000, 9999), math.random(100000, 999999))
+		end
+	end
+end
+
 ---------------------------------------------------------------- input from the host
 local function inputObject(typeName, state, keyName)
 	local io = newInstance("InputObject", true)
@@ -4247,6 +4292,10 @@ function E.run(source: string, chunkname: string)
 		return false
 	end
 	task.spawn(fn)
+	if not E.guestStarted and E.simGuest then
+		E.guestStarted = true
+		task.spawn(E.simGuest)
+	end
 	E.ensureLayout()
 	return true
 end

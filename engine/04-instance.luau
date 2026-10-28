@@ -320,11 +320,17 @@ local function setParent(inst, newParent)
 	end
 	if old then
 		fireIf(D[old], "ChildRemoved", inst)
+		if d.cls.name == "Player" and D[old].cls.name == "Players" then
+			fireIf(D[old], "PlayerRemoving", inst)
+		end
 	end
 	if newParent then
 		local nd = D[newParent]
 		table.insert(nd.children, inst)
 		fireIf(nd, "ChildAdded", inst)
+		if d.cls.name == "Player" and nd.cls.name == "Players" then
+			fireIf(nd, "PlayerAdded", inst)
+		end
 		local anc = newParent
 		while anc do
 			local ad = D[anc]

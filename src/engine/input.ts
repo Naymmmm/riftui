@@ -362,13 +362,17 @@ export class Input {
       return v.s * base + v.o * n.scale
     }
     const xa = P.enm(n, 'TextXAlignment', 'Center')
+    // Roblox keeps PlaceholderText visible in a focused, empty box
+    const rgb = (k: string) => [P.color(n, k).r, P.color(n, k).g, P.color(n, k).b].map((v) => Math.round(v * 255)).join(',')
+    ;(el as HTMLInputElement).placeholder = P.str(n, 'PlaceholderText')
     el.style.cssText =
       `position:absolute;left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px;z-index:100000;box-sizing:border-box;` +
       `padding:${pv('PaddingTop', n.h)}px ${pv('PaddingRight', n.w)}px ${pv('PaddingBottom', n.h)}px ${pv('PaddingLeft', n.w)}px;` +
       `background:transparent;border:0;outline:none;resize:none;margin:0;` +
       `font-family:${cssFamily(font)};font-weight:${font?.weight ?? 400};font-size:${n.textSize || P.num(n, 'TextSize', 14)}px;` +
       `color:rgb(${[P.color(n, 'TextColor3').r, P.color(n, 'TextColor3').g, P.color(n, 'TextColor3').b].map((v) => Math.round(v * 255)).join(',')});` +
-      `caret-color:currentColor;text-align:${xa === 'Left' ? 'left' : xa === 'Right' ? 'right' : 'center'};`
+      `caret-color:currentColor;text-align:${xa === 'Left' ? 'left' : xa === 'Right' ? 'right' : 'center'};` +
+      `--ph:rgb(${rgb('PlaceholderColor3')});`
   }
 
   refreshEditor() {

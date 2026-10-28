@@ -5,6 +5,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { revision } from './revision.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 mkdirSync(join(root, 'public'), { recursive: true })
@@ -18,7 +19,8 @@ const parts = files.map((f) => {
 writeFileSync(join(root, 'public/engine.luau'), parts.join('\n'))
 
 const icons = readFileSync(join(root, 'lib/generated/icons.luau'), 'utf8').replace(/^--.*\n/, '').replace(/^return /, '')
-const lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8')
+const build = revision()
+const lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')
 if (!lib.includes('--@@ICONS@@')) throw new Error('lib/RiftUI.luau is missing the --@@ICONS@@ marker')
 writeFileSync(join(root, 'public/RiftUI.luau'), lib.replace('--@@ICONS@@', `local ICON_INDEX = ${icons.trim()}`))
 writeFileSync(join(root, 'public/Loader.luau'), readFileSync(join(root, 'lib/Loader.luau'), 'utf8'))

@@ -240,6 +240,9 @@ export class Renderer {
 
   private resolveImage(id: string): string | null {
     if (!id) return null
+    // Offline headshots for the simulator's sample roster; unknown avatars keep initials.
+    const thumbnail = /^rbxthumb:\/\/type=AvatarHeadShot&id=(\d+)&/.exec(id)
+    if (thumbnail) return new Set(['156', '261', '3', '31337', '48213', '77042']).has(thumbnail[1]) ? '/avatars/' + thumbnail[1] + '.png' : null
     const custom = /^rbxasset:\/\/riftsim\/(.+)$/.exec(id)
     if (custom) return this.vfs.assetUrl(custom[1])
     if (/^(https?:|data:|blob:)/.test(id)) return id

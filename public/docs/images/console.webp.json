@@ -1,0 +1,4 @@
+{
+  "prompt": "Screenshot of actual RiftUI Luau rendered by RiftSim. Source: src/docs/demos.ts; demo=console; state=initial; theme=Graphite; route=/docs/preview.html. Captured using scripts/dev/docs-capture.mjs.",
+  "source": "Actual RiftUI screenshot; see provenance.json"
+}

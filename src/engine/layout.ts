@@ -20,6 +20,8 @@ export class Layout {
   H = 720
   private pass = 0
   private sizeCache = new Map<Node, Map<string, [number, number]>>()
+  // screen pixels per local unit for the frame being laid out; text is measured at its drawn size
+  private k = 1
   private records: string[] = []
   private canvasFixes: string[] = []
   renderedGuis: Node[] = []
@@ -80,6 +82,7 @@ export class Layout {
     const uiScale = this.scene.component(gui, 'UIScale')
     const s = uiScale ? P.num(uiScale, 'Scale', 1) : 1
     const frame: Frame = { ox: 0, oy: top, k: s }
+    this.k = s
     this.layoutChildren(gui, { x: 0, y: 0, w: gui.w / s, h: gui.h / s }, frame, null, gui.rendered)
   }
 
@@ -147,7 +150,7 @@ export class Layout {
 
   // Size of a node given its parent's content size, with AutomaticSize resolved.
   size(n: Node, pw: number, ph: number): [number, number] {
-    const key = pw.toFixed(2) + ',' + ph.toFixed(2)
+    const key = pw.toFixed(2) + ',' + ph.toFixed(2) + ',' + this.k
     let m = this.sizeCache.get(n)
     const hit = m?.get(key)
     if (hit) return hit
@@ -250,19 +253,27 @@ export class Layout {
   }
 
   // ---- text ------------------------------------------------------------
-  private textBounds(n: Node, wrapWidth: number, size: number): [number, number] {
+  // Browser glyph widths don't scale linearly with font size, so measuring at the base size and
+  // multiplying by the UIScale undershoots and the drawn text overflows its automatic size.
+  private textBounds(n: Node, wrapWidth: number, size: number, k = this.k * this.ownScale(n)): [number, number] {
     const rich = P.bool(n, 'RichText')
     let text = P.str(n, 'Text')
     if (n.cls === 'TextBox' && text === '') text = ''
     const wrapped = P.bool(n, 'TextWrapped') || P.bool(n, 'TextScaled')
-    return measure({
+    const [w, h] = measure({
       text,
-      size,
+      size: size * k,
       font: n.props.FontFace as FontVal | undefined,
-      width: wrapped ? wrapWidth : 0,
+      width: wrapped ? wrapWidth * k : 0,
       rich,
       lineHeight: P.num(n, 'LineHeight', 1),
     })
+    return [w / k, h / k]
+  }
+
+  private ownScale(n: Node) {
+    const uiScale = this.scene.component(n, 'UIScale')
+    return uiScale ? P.num(uiScale, 'Scale', 1) : 1
   }
 
   private resolveText(n: Node, cw: number, ch: number, k: number) {
@@ -277,14 +288,14 @@ export class Layout {
       else {
         while (lo < hi) {
           const mid = Math.ceil((lo + hi) / 2)
-          const [tw, th] = this.textBounds(n, cw, mid)
+          const [tw, th] = this.textBounds(n, cw, mid, k)
           if (tw <= cw + 0.5 && th <= ch + 0.5) lo = mid
           else hi = mid - 1
         }
         size = lo
       }
     }
-    const [tw, th] = this.textBounds(n, cw, size)
+    const [tw, th] = this.textBounds(n, cw, size, k)
     n.textSize = size * k
     const fits = tw <= cw + 0.5 && th <= ch + 0.5
     this.report(n, 't', [fmt(tw * k), fmt(th * k), fits ? '1' : '0'].join(SEP))
@@ -337,8 +348,11 @@ export class Layout {
       childClip = clip ? { x0: Math.max(r.x0, clip.x0), y0: Math.max(r.y0, clip.y0), x1: Math.min(r.x1, clip.x1), y1: Math.min(r.y1, clip.y1) } : r
     }
 
+    const parentK = this.k
+    this.k = childFrame.k
     if (n.cls === 'ScrollingFrame') content = this.scrollCanvas(n, w, h, originX, originY, pad, childFrame)
     this.layoutChildren(n, content, childFrame, childClip, n.rendered)
+    this.k = parentK
   }
 
   private scrollCanvas(n: Node, w: number, h: number, ox: number, oy: number, pad: { t: number; r: number; b: number; l: number }, frame: Frame) {

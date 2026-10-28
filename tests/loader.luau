@@ -15,7 +15,7 @@ local function run(pin, body, failure)
 		game = { HttpGet = function(_, url)
 			table.insert(requests, url)
 			if failure then error(failure) end
-			return body or 'return { Folder = "RiftUI", CreateHub = function() end }'
+			return body or 'return { Version = "abc1234", Folder = "RiftUI", CreateHub = function() end }'
 		end },
 		loadstring = function(code, name)
 			local ok, chunk = pcall(luau.load, code, { debugName = name, environment = env })
@@ -31,9 +31,11 @@ local ok, Rift, requests = run(sha)
 check(ok, "pinned loader executes")
 check(#requests == 1 and requests[1] == "https://raw.githubusercontent.com/Naymmmm/riftui/" .. sha .. "/public/RiftUI.luau", "fetches the exact pinned URL once")
 check(Rift.Commit == sha and Rift.AssetBase == "https://raw.githubusercontent.com/Naymmmm/riftui/" .. sha .. "/public/", "library and assets use the same revision")
+check(Rift.Version == string.sub(sha, 1, 7), "pinned version displays its commit hash")
 check(Rift.AssetCacheFolder == "RiftUI/assets/" .. sha, "pins have isolated asset caches")
 ok, Rift, requests = run(nil)
 check(ok and Rift.Commit == "main" and string.find(requests[1], "/main/public/", 1, true), "unset pin uses main")
+check(Rift.Version == "abc1234", "main retains the bundled build hash")
 check(Rift.AssetCacheFolder == nil, "main keeps the existing asset cache")
 ok, Rift, requests = run("abcdef1")
 check(ok and Rift.Commit == "abcdef1", "accepts abbreviated hexadecimal commits")

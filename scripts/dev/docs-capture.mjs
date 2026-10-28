@@ -43,12 +43,19 @@ async function shot(file, demo, state = 'initial', theme = 'Graphite') {
   provenance.push({ file: file + '.webp', origin, cssWidth: 660, cssHeight: 500, pixelRatio: 2 })
 }
 try {
-  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette']) {
+  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations"]) {
     await open(demo)
     if (demo === 'dropdown') await clickNode({ name: 'Chip' })
     if (demo === 'color-picker') await clickNode({ name: 'Swatch' })
     if (demo === 'notifications') await clickNode({ text: 'Show notification' })
     if (demo === 'pins') await clickNode({ text: 'Pin movement' })
+    if (demo === 'player-picker') await clickNode({ name: 'Chip' })
+    if (demo === 'stat') await clickNode({ text: 'Earn 100' })
+    if (demo === 'tooltips') {
+      const p = await page.evaluate(() => { const n = [...window.docsPreview.runtime.scene.nodes.values()].find(n => n.props.Name === 'Slider_Smoothing'); return {x:n.x+12,y:n.y+10} })
+      await page.mouse.move(p.x,p.y)
+      await page.waitForTimeout(600)
+    }
     await shot(demo, demo, ['dropdown', 'color-picker', 'notifications', 'pins'].includes(demo) ? 'opened' : 'initial')
     if (demo === 'button') {
       await clickNode({ text: 'Run action' })
@@ -63,7 +70,7 @@ try {
   }
   if (errors.length) throw new Error(errors.join('\n'))
   writeFileSync(out + '/provenance.json', JSON.stringify({ source: 'Actual library screenshots, not generated mockups', images: provenance }, null, 2) + '\n')
-  console.log('Captured ' + provenance.length + ' images; all 15 examples loaded; button callback verified.')
+  console.log('Captured ' + provenance.length + ' images; all 27 examples loaded; button callback verified.')
 } finally {
   await browser.close()
 }

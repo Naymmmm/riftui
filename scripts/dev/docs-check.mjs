@@ -15,6 +15,10 @@ const report = {}
 try {
   await page.goto('http://localhost:5199/')
   await page.locator('h1').waitFor()
+  assert(/^[a-f0-9]{7}(?:-dev)?$/.test(await page.locator('.version').textContent()), 'Version should show the Git revision')
+  assert(/\/commit\/[a-f0-9]{40}$/.test(await page.locator('.version').getAttribute('href')), 'Version should link to its GitHub commit')
+  assert(await page.locator('h1').textContent() === 'RiftUI library for Roblox', 'Default page should introduce RiftUI')
+  await page.screenshot({path:'.impeccable/review/docs/introduction-desktop.png'})
   await page.evaluate(() => document.fonts.ready)
   const routes = await page.locator('#navigation a').evaluateAll(as => as.map(a => a.getAttribute('href')))
   for (const route of routes) {
@@ -98,6 +102,18 @@ try {
   await page.locator('#search').focus()
   assert(await page.evaluate(() => document.activeElement?.id === 'search'), 'Desktop search is not reachable')
   report.navigationFocus = true
+  for (const path of ['/simulator', '/simulator/', '/simuilator']) {
+    await page.goto('http://localhost:5199' + path)
+    await page.waitForFunction(() => !!window.riftsim?.runtime)
+    assert((await page.title()).includes('RiftSim'), path + ' served docs instead of the simulator')
+  }
+  report.simulatorRoutes = true
+  await page.setViewportSize({width:390,height:844})
+  await page.goto('http://localhost:5199/')
+  await page.locator('.intro-banner img').waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  await page.screenshot({path:'.impeccable/review/docs/introduction-mobile.png'})
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Introduction overflows mobile')
   assert(!errors.length, 'Browser errors: ' + errors.join('\n'))
   report.consoleErrors = errors
   writeFileSync('.impeccable/review/docs/checks.json', JSON.stringify(report, null, 2) + '\n')

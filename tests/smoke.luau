@@ -25,6 +25,7 @@ local hubSource = fs.readFile("examples/hub.luau")
 local folders: { [string]: boolean } = {}
 local errors = {}
 local env
+local clipboardText
 
 local ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local function b64encode(data: string): string
@@ -111,7 +112,7 @@ local host = {
 		end
 		return "404\31\31{}"
 	end,
-	clipboard = function() end,
+	clipboard = function(value) clipboardText = value end,
 }
 host.register = function(step, run)
 	host.step = step
@@ -166,7 +167,7 @@ host.run(probe, "probe")
 frames(2)
 local R = sink.R
 check(R.gui, "RiftUI ScreenGui exists under gethui()")
-check(R.tiles == 6, "dock has search + 4 hub tabs + Settings (got " .. tostring(R.tiles) .. ")")
+check(R.tiles == 7, "dock has search + 5 hub tabs + Settings (got " .. tostring(R.tiles) .. ")")
 
 host.run([[
 	local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
@@ -245,7 +246,11 @@ host.run([[
 	dd:Set("y")
 	task.wait()
 	R.toggled = toggled
+	R.badgeHidden = not Tab.Badge.Visible
+	Tab:SetBadge("New")
 	R.badge = Tab.Badge.Visible and Tab.BadgeText.Text
+	Tab:SetBadge(nil)
+	R.badgeCleared = not Tab.Badge.Visible
 	R.slider = sl.Value
 	local gui, palette, control = Hub.Gui, Hub.Theme, flags.TA
 	local swatchBefore = cp.Value
@@ -271,6 +276,124 @@ host.run([[
 	R.loaded = Hub:LoadConfig("unit")
 	R.after = { flags.TA.Value, flags.TB.Value, flags.TC.Value, flags.TD.Value and flags.TD.Value.Name }
 	R.configs = Hub:ListConfigs()
+	-- per-config autoload, rename, share codes
+	Hub:SetAutoload("unit")
+	R.autoload = Hub:GetAutoload() == "unit"
+	local code = Hub:ExportConfig("unit")
+	R.exported = type(code) == "string" and string.sub(code, 1, 9) == "RIFTCFG1:"
+	local imported, importedName = Hub:ImportConfig(code, "copy")
+	R.imported = imported and importedName == "copy" and table.find(Hub:ListConfigs(), "copy") ~= nil
+	R.foreignRefused = not Hub:ImportConfig("RIFTCFG1:" .. "e30=")
+	R.renamed = Hub:RenameConfig("unit", "main") and Hub:GetAutoload() == "main" and not table.find(Hub:ListConfigs(), "unit")
+	local info = Hub:ConfigInfo("main")
+	R.info = info and info.Autoload and info.Settings and info.Settings > 0 and type(info.SavedAt) == "number"
+	R.deleted = Hub:DeleteConfig("main") and Hub:GetAutoload() == nil
+	Hub:RenameConfig("copy", "unit")
+	-- child windows with tabs
+	local Win = Hub:Window({ Title = "Extra", Icon = "app-window" })
+	local WA = Win:Tab({ Name = "One" })
+	local WB = Win:Tab({ Name = "Two" })
+	local wt = WA:Section({ Name = "WS" }):Toggle({ Name = "Window toggle", Flag = "WinToggle" })
+	WB:Section({ Name = "WS2" }):Slider({ Name = "Window slider", Min = 0, Max = 10 })
+	local opener = S:Button({ Name = "Open extra", Window = Win })
+	R.windowClosed = not Win.IsOpen and not Win.Layer.Visible
+	Win:Open()
+	Win:SelectTab("Two")
+	R.windowOpen = Win.IsOpen and Win.Layer.Visible and Win.Selected == WB and WB.Page.Visible and not WA.Page.Visible and Win.Strip.Visible
+	R.windowFlag = flags.WinToggle == wt and wt.Section.Hub == Hub
+	Win:Close()
+	task.wait(0.3)
+	R.windowHidden = not Win.IsOpen and not Win.Layer.Visible and opener.Window == Win
+	-- new controls
+	local parentToggle = S:Toggle({ Name = "Parent feature" })
+	local G = S:Group({ Name = "Parent options", DependsOn = parentToggle })
+	local inner = G:Slider({ Name = "Inner slider", Flag = "GroupInner", Min = 0, Max = 5, Default = 2 })
+	task.wait(0.05)
+	R.groupClosed = not G:IsOpen()
+	parentToggle:Set(true)
+	task.wait(0.05)
+	R.groupOpens = G:IsOpen() and inner.Section == G and table.find(S.Controls, inner) ~= nil
+	parentToggle:Set(false, true)
+	task.wait(0.05)
+	R.groupFollowsSilent = not G:IsOpen()
+	G:SetOpen(true)
+	R.groupManual = G:IsOpen()
+	local range = S:RangeSlider({ Name = "Range", Flag = "RangeFlag", Min = 0, Max = 100, Default = { 20, 80 } })
+	range:Set({ 90, 10 })
+	R.range = range.Value.Min == 10 and range.Value.Max == 90
+	local prog = S:Progress({ Name = "Health", Max = 200, Default = 50, Segments = 4 })
+	prog:Set(250)
+	R.progress = prog.Value == 200
+	local stat = S:Stat({ Name = "Money", Default = 1000, Delta = true })
+	stat:Update(12345)
+	R.stat = stat.Value == 12345 and stat.Frame:FindFirstChild("Value", true).Text == "12,345"
+	local spark = S:Sparkline({ Name = "FPS", Points = 8 })
+	for i = 1, 12 do spark:Push(i) end
+	R.spark = #spark.Values == 8 and spark:Get() == 12
+	local seg = S:Segmented({ Name = "Mode", Flag = "SegFlag", Options = { "Legit", "Rage" } })
+	seg:Set("Rage")
+	seg:Set("Nope")
+	R.segmented = seg.Value == "Rage"
+	local stepper = S:Stepper({ Name = "Count", Flag = "StepFlag", Min = 1, Max = 5, Default = 3 })
+	stepper:Set(9)
+	R.stepper = stepper.Value == 5
+	local log = S:Console({ Name = "Log", MaxLines = 3 })
+	for i = 1, 5 do log:Log("line " .. i, i == 5 and "error" or nil) end
+	R.console = #log.Lines == 3 and string.find(log:Get(), "line 5") ~= nil
+	log:Clear()
+	R.consoleClear = #log.Lines == 0
+	local pick = S:PlayerPicker({ Name = "Target", Flag = "PickFlag" })
+	local P = game:GetService("Players")
+	-- Players can't be created by scripts; use one from the simulated server
+	local guest = P:FindFirstChild("BaconHair")
+	pick:Set("BaconHair")
+	R.picker = pick.Value == guest
+	local okSave = Hub:SaveConfig("controls")
+	range:Set({ 0, 1 })
+	seg:Set("Legit")
+	stepper:Set(1)
+	Hub:LoadConfig("controls")
+	R.newControlsSave = okSave and range.Value.Min == 10 and seg.Value == "Rage" and stepper.Value == 5 and pick.Value == guest
+	guest.Parent = nil
+	task.wait(0.05)
+	R.pickerLeft = pick.Value == nil
+	guest.Parent = P
+	local tipped = S:Slider({ Name = "Tipped", Description = "Shown on hover" })
+	R.tooltip = tipped.Tooltip == "Shown on hover"
+	-- HUD and language
+	R.assetBase = Rift.AssetBase == "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/"
+	for _, section in Hub.SettingsTab.Sections do
+		if section.Name == "About" then
+			R.powered = true
+			for _, node in section.Frame:GetDescendants() do
+				if node:IsA("TextLabel") and node.Text == "This script is powered by RiftUI. Licensed under MPL-2.0" then R.licenseCredit = true end
+			end
+			for _, control in section.Controls do
+				if control.Name == "Copy GitHub link" then control:_emit() end
+			end
+		end
+	end
+	Hub:SetWatermark(true, true)
+	Hub:SetKeybindList(true, true)
+	task.wait(0.1)
+	R.hud = Hub._watermark ~= nil and Hub._keylist ~= nil and Hub.Gui:FindFirstChild("Watermark") ~= nil
+	Hub:SetWatermark(false, true)
+	Hub:SetKeybindList(false, true)
+	R.hudOff = Hub._watermark == nil and Hub._keylist == nil
+	Hub:SetLanguage("es", true)
+	task.wait()
+	R.translated = Hub:T("Settings") == "Ajustes" and Hub:T("12 results") == "12 resultados" and Hub:T("INTERFACE") == "INTERFAZ"
+	local found = false
+	for _, d in Hub.Gui:GetDescendants() do
+		if d:IsA("TextLabel") and d.Text == "Tecla de la barra" then found = true break end
+	end
+	R.translatedGui = found
+	Hub:SetLanguage("en", true)
+	local back = true
+	for _, d in Hub.Gui:GetDescendants() do
+		if d:IsA("TextLabel") and d.Text == "Tecla de la barra" then back = false break end
+	end
+	R.untranslated = back
 	S:Pin()
 	R.pinned = S.Pinned and Hub.PinLayer:FindFirstChild("Pin_S") ~= nil
 	S:Unpin()
@@ -339,7 +462,31 @@ check(R.bgCleared == true, "SetBackground(nil) removes the image")
 check(R.replaced == true, "re-running a hub with the same Id replaces the old one")
 check(files["RiftUI/test-hub/configs/unit.json"] ~= nil, "configs live under RiftUI/<Id>/configs")
 check(R.toggled == true, "Toggle callback fires with the new value")
-check(R.badge == "1", "tile badge counts enabled toggles")
+check(R.badgeHidden == true, "tiles show no toggle-count badge unless ToggleBadges is set")
+check(R.badge == "New" and R.badgeCleared == true, "Tab:SetBadge shows and clears a badge")
+check(R.autoload == true, "SetAutoload / GetAutoload round-trip")
+check(R.exported == true and R.imported == true, "ExportConfig code imports under a new name")
+check(R.foreignRefused == true, "ImportConfig refuses a code for another hub")
+check(R.renamed == true, "RenameConfig moves the file and keeps autoload")
+check(R.info == true, "ConfigInfo reads count, time and autoload")
+check(R.deleted == true, "DeleteConfig clears autoload for that config")
+check(R.windowClosed == true and R.windowOpen == true and R.windowHidden == true, "Window opens, switches tabs and closes")
+check(R.windowFlag == true, "window controls register flags like panel controls")
+check(R.groupClosed and R.groupOpens and R.groupFollowsSilent and R.groupManual, "Group folds with its parent toggle and opens by hand")
+check(R.range == true, "RangeSlider orders and clamps its two values")
+check(R.progress == true, "Progress clamps to its maximum")
+check(R.stat == true, "Stat formats thousands")
+check(R.spark == true, "Sparkline keeps a rolling window")
+check(R.segmented == true, "Segmented ignores unknown options")
+check(R.stepper == true, "Stepper clamps")
+check(R.console and R.consoleClear, "Console caps lines and clears")
+check(R.picker and R.pickerLeft, "PlayerPicker picks by name and clears when the player leaves")
+check(R.newControlsSave == true, "range, segmented, stepper and player picker save in configs")
+check(R.tooltip == true, "Description becomes a hover tooltip on controls that don't print it")
+check(R.assetBase and R.powered and R.licenseCredit and clipboardText == "https://github.com/Naymmmm/riftui", "real AssetBase and About license credit with working GitHub copy")
+check(R.hud and R.hudOff, "watermark and keybind list turn on and off")
+check(R.translated == true, "translations cover exact, patterned and uppercase text")
+check(R.translatedGui and R.untranslated, "SetLanguage relabels the GUI and switches back")
 check(R.themeIntermediate == true, "theme colours interpolate before reaching their destination")
 check(R.liveTheme == true, "theme changes preserve the GUI, palette, controls and values")
 check(R.themeColours == true, "existing panel and dock receive the new palette")

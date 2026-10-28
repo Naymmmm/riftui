@@ -787,6 +787,41 @@ setProp(playerGui, "Parent", player, true)
 E.player = player
 E.mouse = newInstance("Mouse", true)
 
+-- A small server so player pickers and lists have someone to show. One guest drifts in
+-- and out every so often to exercise join and leave handling.
+local roster = {
+	{ "Builderman", "builderman", 156 },
+	{ "Noob", "Noob_2009", 20091 },
+	{ "Sniper", "xXSniperXx", 48213 },
+	{ "Cool Kid", "CoolKid42", 77042 },
+	{ "Bacon", "BaconHair", 31337 },
+	{ "Telamon", "Telamon", 261 },
+	{ "Shedletsky", "Shedletsky", 1 + 2 },
+}
+local function addPlayer(display, name, id)
+	local p = newInstance("Player", true)
+	setProp(p, "Name", name, true)
+	setProp(p, "DisplayName", display, true)
+	setProp(p, "UserId", id, true)
+	setProp(p, "Parent", services.Players, true)
+	return p
+end
+for _, r in roster do
+	addPlayer(r[1], r[2], r[3])
+end
+E.simGuest = function()
+	local guest
+	while true do
+		task.wait(guest and 14 or 9)
+		if guest then
+			setProp(guest, "Parent", nil, true)
+			guest = nil
+		else
+			guest = addPlayer("Guest", "Guest_" .. math.random(1000, 9999), math.random(100000, 999999))
+		end
+	end
+end
+
 ---------------------------------------------------------------- input from the host
 local function inputObject(typeName, state, keyName)
 	local io = newInstance("InputObject", true)

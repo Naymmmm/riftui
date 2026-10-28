@@ -1,0 +1,12 @@
+RiftUI source code is subject to the Mozilla Public License, v. 2.0.
+If a copy of the MPL was not distributed with a source file, obtain it at
+https://mozilla.org/MPL/2.0/ or in LICENSE.
+
+Third-party assets retain their respective licenses and rights:
+- Lucide icons: ISC License (lucide-static package).
+- Web fonts are loaded from Google Fonts under their individual licenses.
+- public/avatars contains cached Roblox thumbnails for the simulator's sample
+  roster. These are preview fixtures, not RiftUI artwork; their source URLs
+  are recorded in public/avatars/provenance.json.
+
+The RiftUI banner is authored in docs/banner.html and src/brand/banner.css.

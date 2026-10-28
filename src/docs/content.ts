@@ -10,6 +10,7 @@ export interface DocSection {
   note?: string
 }
 export interface DocPage {
+  navTitle?: string
   slug: string
   title: string
   group: string
@@ -30,6 +31,17 @@ const control = (slug: string, title: string, summary: string, hint: string, cod
   ],
 })
 export const pages: DocPage[] = [
+  {
+    slug: 'introduction', navTitle: 'Introduction', title: 'RiftUI library for Roblox', group: 'Overview',
+    summary: 'A dock-style UI library for Roblox script hubs. Floating panels, a command palette, live theming, and a browser simulator to build it all without launching a game.',
+    sections: [
+      { id: 'loader', title: 'Load RiftUI', text: ['Load the library, create a hub, then add tabs, sections and controls. The official loader fetches RiftUI and its assets from this repository.'], code: loader },
+      { id: 'included', title: 'What’s included', text: ['A compact toolbar opens floating panels. Pin sections, search controls with the <a href="#command-palette">command palette</a>, or move detailed settings into <a href="#hub-api">child windows</a>.', 'Build with buttons, toggles, sliders, player pickers, logs and live meters. <a href="#themes">Themes</a>, <a href="#translations">translations</a> and <a href="#configs">saved configs</a> are built in.'] },
+      { id: 'start', title: 'Get started', text: ['Follow the <a href="#quick-start">quick start</a> to build your first hub, or read the <a href="https://github.com/Naymmmm/riftui/blob/main/examples/hub.luau">complete example</a>. Each component page includes code, a screenshot and a live example.'] },
+      { id: 'simulator', title: 'Preview in the docs', text: ['<a href="/simulator">RiftSim</a> is an optional browser workspace for trying your hub without launching Roblox. It runs the same Luau library with a simulated ScreenGui and sample game data. Your finished hub runs independently of the simulator.'] },
+      { id: 'source', title: 'Source & license', text: ['RiftUI is open source under the <a href="https://github.com/Naymmmm/riftui/blob/main/LICENSE">Mozilla Public License 2.0</a>. Report issues or contribute on <a href="https://github.com/Naymmmm/riftui">GitHub</a>.'] },
+    ],
+  },
   {
     slug: 'quick-start', title: 'Quick start', group: 'Getting started',
     summary: 'Build a dock-style script hub in Luau. See what you’re making, try the controls, then copy the code.',
@@ -97,10 +109,307 @@ end, Rift.HandleError)` },
     hint: 'Type Walk speed, then select the result. Reopen with the toolbar search button or F2 after focusing the preview.',
     sections: [
       { id: 'open', title: 'Open from anywhere', text: ['Click the search icon at the start of the toolbar, or press <kbd>F2</kbd>. On phones, tap the same search button. If the toolbar is hidden, use Show toolbar first. Shortcuts stay inactive while you type in another text field or bind a key.'], code: 'Hub:OpenCommandPalette()\nHub:CloseCommandPalette()' },
-      { id: 'search', title: 'Search and jump', text: ['Search matches tab, section and control names, ignoring letter case. Every word must match; exact names appear first. Hidden controls and supporting labels are omitted. Up and Down select a result, Enter opens it, and Escape or the close button dismisses the palette.', 'Selecting a control opens its tab, scrolls it into view and briefly highlights its row. Pinned controls stay pinned. Values and control callbacks stay unchanged. Built-in action results, such as Hide toolbar and Run setup again, perform their named action. Results show up to 40 matches; keep typing to narrow a longer list.'] },
+      { id: 'search', title: 'Search and jump', text: ['With nothing typed, the palette lists your recent jumps, then tabs, windows and actions. Typing searches tab, section and control names, ignoring letter case, and groups results under their tab or window. Every word must match, or type initials: <kbd>fov</kbd> finds Field of view. Exact names appear first. The box shrinks to fit its results. Hidden controls and supporting labels are omitted. Up and Down select a result, Enter opens it, and Escape or the close button dismisses the palette.', 'Selecting a control opens its tab, scrolls it into view and briefly highlights its row. Pinned controls stay pinned. Values and control callbacks stay unchanged. Built-in action results, such as Hide toolbar and Run setup again, perform their named action. Results show up to 40 matches; keep typing to narrow a longer list.'] },
       { id: 'shortcut', title: 'Choose a shortcut', text: ['Use CommandKey when creating the hub, call SetCommandKey later, or change Command palette key under Settings → Interface. The changed shortcut is saved per hub and included in saved configs. Use a different key from your toolbar shortcut and control keybinds.'], code: 'local Hub = Rift:CreateHub({\n    Name = "My Hub",\n    CommandKey = Enum.KeyCode.F2,\n})\n\nHub:SetCommandKey(Enum.KeyCode.F3)' },
     ],
   },
+  {
+  "slug": "range-slider",
+  "title": "Range slider",
+  "group": "Components",
+  "summary": "Drag two handles to choose a minimum and maximum.",
+  "demo": "range-slider",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Range = Section:RangeSlider({\n    Name = \"Delay\", Min = 0, Max = 500, Step = 10,\n    Default = {40, 120}, Suffix = \" ms\", Flag = \"Delay\",\n    Callback = function(low, high) print(low, high) end,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Value is {Min, Max}. Handles stop against each other. Set accepts {low, high} or {Min = low, Max = high}, sorts and clamps both values. Pass true as the second argument to Set to suppress callbacks."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Range:Set({60, 180})\nlocal low, high = Range:Get()"
+    }
+  ]
+},
+  {
+  "slug": "progress",
+  "title": "Progress / meter",
+  "group": "Components",
+  "summary": "A read-only meter for values supplied by your script.",
+  "demo": "progress",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Meter = Section:Progress({\n    Name = \"Health\", Min = 0, Max = 100, Default = 82,\n    Segments = 6, -- omit for a continuous bar\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Set and Update clamp to Min and Max. Supply Color for a fixed fill colour, or Format(value, min, max) for custom readout text. Values animate; this control has no input callback."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Meter:Set(65)\nMeter:Update(72)\nlocal value = Meter:Get()"
+    }
+  ]
+},
+  {
+  "slug": "stat",
+  "title": "Stat row",
+  "group": "Components",
+  "summary": "A live monospace value with optional change indicators.",
+  "demo": "stat",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Stat = Section:Stat({\n    Name = \"Money\", Default = 12500, Suffix = \" $\",\n    Delta = true, HigherIsBetter = true,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "The label updates only when formatted text changes. Delta shows gains or losses briefly in green or red. Set HigherIsBetter = false for metrics where a decrease is good. Format(value) replaces the default number formatter."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Stat:Update(12600)\nlocal value = Stat:Get()"
+    }
+  ]
+},
+  {
+  "slug": "sparkline",
+  "title": "Sparkline",
+  "group": "Components",
+  "summary": "A small rolling graph for a stream of numeric samples.",
+  "demo": "sparkline",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Graph = Section:Sparkline({\n    Name = \"Frame rate\", Points = 40, Suffix = \" fps\",\n    Min = 0, Max = 120, -- omit to fit the observed range\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Points is clamped to 4–120. Push appends a sample and drops the oldest once full. Provide samples from your own timer; the graph does not poll FPS or other data automatically. Color, Step and Format customise the line and readout."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Graph:Push(60)\nGraph:Update(58) -- alias for Push\nGraph:Clear()\nlocal newest = Graph:Get()"
+    }
+  ]
+},
+  {
+  "slug": "segmented",
+  "title": "Segmented control",
+  "group": "Components",
+  "summary": "Keep a short choice visible instead of opening a dropdown.",
+  "demo": "segmented",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Mode = Section:Segmented({\n    Name = \"Mode\", Options = {\"Explore\", \"Build\", \"Practice\"},\n    Default = \"Explore\", Flag = \"Mode\",\n    Callback = function(value) print(value) end,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Use two to four short options. The active segment moves to the selected option. Unknown values are ignored. Set(value, true) changes the choice silently."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Mode:Set(\"Build\")\nlocal value = Mode:Get()"
+    }
+  ]
+},
+  {
+  "slug": "stepper",
+  "title": "Number stepper",
+  "group": "Components",
+  "summary": "Increase or decrease a small numeric value.",
+  "demo": "stepper",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Burst = Section:Stepper({\n    Name = \"Burst\", Min = 1, Max = 5, Step = 1, Default = 1,\n    Flag = \"Burst\", Callback = function(value) print(value) end,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Press plus or minus once to step, or hold to repeat faster. Values round to Step and stay within Min and Max. Set(value, true) suppresses callbacks. Description and Suffix are optional."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Burst:Set(3)\nlocal value = Burst:Get()"
+    }
+  ]
+},
+  {
+  "slug": "console",
+  "title": "Log / console",
+  "group": "Components",
+  "summary": "A bounded, scrollable log with copy and clear actions.",
+  "demo": "console",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Log = Section:Console({\n    Name = \"Events\", Height = 150, MaxLines = 200,\n    Placeholder = \"Nothing logged yet\",\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "The copy button uses the executor clipboard function. New entries follow the end only while the reader is already there. MaxLines caps retained entries. Print is an alias for Log; this is your script’s log, not an automatic capture of every print."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Log:Log(\"Ready\")\nLog:Log(\"Retrying\", \"warn\")\nLog:Log(\"Failed\", \"error\")\nlocal text = Log:Get()\nLog:Clear()"
+    }
+  ]
+},
+  {
+  "slug": "player-picker",
+  "title": "Player picker",
+  "group": "Components",
+  "summary": "Choose a player from the live server roster.",
+  "demo": "player-picker",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Usage",
+      "code": "local Picker = Section:PlayerPicker({\n    Name = \"Player\", Flag = \"TargetPlayer\", IncludeSelf = false,\n    Callback = function(player)\n        print(player and player.Name or \"None\")\n    end,\n})"
+    },
+    {
+      "id": "behavior",
+      "title": "Behavior",
+      "text": [
+        "Rows show an avatar, display name and @username. Join and leave events refresh an open list. The selected value is a Player instance or nil; configs store the username. A selected player leaving clears the value. Set also accepts a Player instance; true as its second argument suppresses callbacks. The simulator supplies a sample roster."
+      ]
+    },
+    {
+      "id": "methods",
+      "title": "Methods",
+      "code": "Picker:Set(\"builderman\")\nlocal player = Picker:Get()\nPicker:Set(nil)"
+    }
+  ]
+},
+  {
+  "slug": "dependent-controls",
+  "title": "Dependent controls",
+  "group": "Guides",
+  "summary": "Fold related settings when their parent option is off.",
+  "demo": "dependent-controls",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Create a group",
+      "code": "local Enabled = Section:Toggle({Name = \"Enabled\", Default = true})\nlocal Tuning = Section:Group({Name = \"Tuning\", DependsOn = Enabled})\nTuning:Slider({Name = \"Field of view\", Min = 10, Max = 400, Default = 120})"
+    },
+    {
+      "id": "behavior",
+      "title": "Keep settings available",
+      "text": [
+        "The group follows the parent toggle, including silent Set calls. Its header can reopen it while the parent is off, so users can prepare settings first. Folding preserves values; it does not disable your script’s logic. Groups accept the same controls as sections. Without DependsOn, use Open = true for an initially open group."
+      ],
+      "code": "Tuning:SetOpen(true)\nlocal open = Tuning:IsOpen()"
+    }
+  ]
+},
+  {
+  "slug": "overlays",
+  "title": "Watermark & keybinds",
+  "group": "Guides",
+  "summary": "Optional HUD elements that stay visible alongside the hub.",
+  "demo": "overlays",
+  "sections": [
+    {
+      "id": "watermark",
+      "title": "Watermark",
+      "code": "local Hub = Rift:CreateHub({Name = \"My Hub\", Watermark = true})\nHub:SetWatermark(false)",
+      "text": [
+        "The strip shows the hub name, FPS, ping and local time. Ping comes from LocalPlayer:GetNetworkPing when available. It can be dragged; its position and enabled state save per hub. It starts off by default."
+      ]
+    },
+    {
+      "id": "keybinds",
+      "title": "Keybind list",
+      "code": "local Hub = Rift:CreateHub({Name = \"My Hub\", KeybindList = true})\nHub:SetKeybindList(false)",
+      "text": [
+        "The floating list shows non-internal bound controls, their keys and their toggle, hold or always state. Rebinding and changing state refresh the list. Drag the header to move it. Both overlays can be toggled under Settings → Interface; saved preferences take precedence over CreateHub defaults. Stealth mode hides them."
+      ]
+    }
+  ]
+},
+  {
+  "slug": "tooltips",
+  "title": "Control tooltips",
+  "group": "Guides",
+  "summary": "Add short hover help through Description.",
+  "demo": "tooltips",
+  "sections": [
+    {
+      "id": "usage",
+      "title": "Describe a control",
+      "code": "Section:Slider({\n    Name = \"Smoothing\", Min = 0, Max = 1, Step = 0.05,\n    Description = \"Higher values move more slowly.\",\n})",
+      "text": [
+        "Controls that do not print Description inline show it as hover help. Move the pointer away to dismiss it. Keep instructions needed on a touch device visible in a label or paragraph, since hover help needs a pointer."
+      ]
+    }
+  ]
+},
+  {
+  "slug": "translations",
+  "title": "Translations",
+  "group": "Guides",
+  "summary": "Change interface language in place and supply translations for your own labels.",
+  "demo": "translations",
+  "sections": [
+    {
+      "id": "language",
+      "title": "Choose a language",
+      "code": "Hub:SetLanguage(\"es\")\nHub:SetLanguage(\"en\")\nlocal translated = Hub:T(\"Settings\")\nlocal languages = Hub:Languages()",
+      "text": [
+        "Built-in dictionaries cover common interface strings in English, Spanish, Portuguese, German and French. Untranslated text falls back to the English source. Language is selectable in Settings and saved per hub. CreateHub accepts Language; otherwise a supported Roblox locale supplies the initial choice."
+      ]
+    },
+    {
+      "id": "custom",
+      "title": "Translate your labels",
+      "code": "local Hub = Rift:CreateHub({\n    Name = \"My Hub\", Language = \"es\",\n    Translations = {\n        es = {\n            [\"Aim Assist\"] = \"Asistencia de puntería\",\n            [\"{n} targets\"] = \"{n} objetivos\",\n        },\n    },\n})",
+      "text": [
+        "Keys are the original English labels. Custom entries override built-in entries and may add another language code. Named placeholders match changing pieces of text. Existing labels and new controls update in place, and switching back restores source strings. Text-box values are left alone; placeholders translate. These dictionaries cover interface copy, not arbitrary player names or script data."
+      ]
+    }
+  ]
+},
   control('button', 'Button', 'A single action, fired when the user clicks. Use a toggle when you need an on/off value.', 'Click Run action. Watch the label and callback output update.',
     `local Button = Section:Button({
     Name = "Run action",
@@ -111,7 +420,7 @@ end, Rift.HandleError)` },
     [['Name', 'string', '"Button"', 'Label shown on the button.'], ['Danger', 'boolean', 'false', 'Uses the danger text colour.'], ['Callback', 'function()', '—', 'Called once for each click.']],
     ['The button highlights on hover, compresses to 97% while pressed, then releases. A click calls <code>Callback()</code> with no arguments.', 'A button does not hold a boolean value. Its callback is where your action belongs.'],
     'Button:SetText("Run again")\nButton:SetVisible(false)\nButton:OnChanged(function()\n    print("Button was clicked")\nend)'),
-  control('toggle', 'Toggle', 'A checkbox with a boolean value. Enabled toggles also contribute to the tab’s badge count.', 'Click either row. Its callback reports true or false.',
+  control('toggle', 'Toggle', 'A checkbox with a boolean value.', 'Click either row. Its callback reports true or false.',
     `local Toggle = Section:Toggle({
     Name = "Sprint",
     Flag = "Sprint",
@@ -121,7 +430,7 @@ end, Rift.HandleError)` },
     end,
 })`,
     [['Name', 'string', '—', 'The row label.'], ['Description', 'string', '—', 'Supporting text below the label.'], ['Default', 'boolean', 'false', 'Initial checked state.'], ['Flag', 'string', '—', 'Registers the control in Rift.Flags.'], ['Callback', 'function(boolean)', '—', 'Receives the new state.']],
-    ['Clicking changes the value and calls the callback. A toggle whose default is <code>true</code> also calls its callback during creation.', 'The checkmark and label update together. The tab badge counts enabled, non-internal toggles.'],
+    ['Clicking changes the value and calls the callback. A toggle whose default is <code>true</code> also calls its callback during creation.', 'The checkmark and label update together.'],
     'Toggle:Set(false)\nprint(Toggle:Get()) -- false\nToggle:Set(true, true) -- update silently\nprint(Rift.Flags.Sprint.Value)'),
   control('slider', 'Slider', 'A numeric value with a range and a step. Drag the notch or type an exact value.',
     'Drag a slider, or click its number and enter a value.',
@@ -344,7 +653,8 @@ if not loaded then warn(loadError) end
 
 print(Hub:ListConfigs())
 Hub:SetAutoload("default")`, text: ['Configs save flagged values plus the toolbar key, scale and pins. Files live under <code>RiftUI/&lt;Id&gt;/configs/</code>. File support is feature-detected; failed operations return a reason.'] },
-      { id: 'manage', title: 'Manage profiles', code: 'Hub:DeleteConfig("default")\nHub:SetAutoload(nil) -- stop auto-loading', text: ['Themes and backgrounds are kept in setup data rather than individual flag-based configs.'] },
+      { id: 'manage', title: 'Manage profiles', code: 'Hub:RenameConfig("default", "legit")\nHub:DeleteConfig("legit") -- also clears autoload if it pointed here\nprint(Hub:GetAutoload())\nprint(Hub:ConfigInfo("rage")) -- { Name, Settings, SavedAt, Autoload }\nHub:SetAutoload(nil) -- stop auto-loading', text: ['Settings → Config has an <strong>Autoload a config</strong> checkbox with its own picker, so browsing the Saved list never changes what loads on start. <strong>Manage configs</strong> opens a window that lists every config with its size and save time, and loads, overwrites, renames, deletes or sets autoload for the selected one.', 'Themes and backgrounds are kept in setup data rather than individual flag-based configs.'] },
+      { id: 'share', title: 'Share a config', code: 'local code = Hub:ExportConfig("legit") -- "RIFTCFG1:..."\nlocal ok, nameOrError = Hub:ImportConfig(code, "from-friend")', text: ['Codes carry control values, pins, keys and scale, and only import into a hub with the same Id. The Share tab in Manage configs copies and imports them.'] },
     ],
   },
   {
@@ -360,8 +670,8 @@ Hub:SetAutoload("default")`, text: ['Configs save flagged values plus the toolba
     slug: 'hub-api', title: 'Hub API', group: 'Reference',
     summary: 'The options and methods that manage a hub’s lifecycle and layout.',
     sections: [
-      { id: 'options', title: 'CreateHub options', columns: optionColumns, rows: [['Name', 'string', '"Rift Hub"', 'Display name.'], ['Id', 'string', 'Derived from Name', 'Stable identity and per-hub folder.'], ['Subtitle', 'string', '""', 'Supporting hub text.'], ['ToggleKey', 'Enum.KeyCode', 'RightShift', 'Toolbar visibility shortcut.'], ['CommandKey', 'Enum.KeyCode', 'F2', 'Command palette shortcut.'], ['ThemeName', 'string', '"Graphite"', 'Built-in palette name.'], ['Theme', 'table', '{}', 'Colour overrides.'], ['Setup', 'boolean or table', 'Enabled', 'First-run flow and optional custom choices.'], ['Settings', 'boolean', 'true', 'Built-in Settings tab.'], ['Stealth', 'boolean', 'false', 'Random names, suppressed notifications, hidden toolbar.']] },
-      { id: 'layout', title: 'Layout and visibility', columns: ['Method', 'Effect'], rows: [['Hub:Tab({ Name, Icon, Description })', 'Creates a toolbar tile and content page.'], ['Tab:Section({ Name, Side, Pinnable })', 'Creates a section; Side is Left or Right, otherwise balanced.'], ['Hub:Open(Tab) / Hub:Close()', 'Opens or closes the current panel.'], ['Hub:SetToolbarVisible(boolean)', 'Shows or hides the toolbar.'], ['Hub:SetScale(number)', 'Sets interface scale, clamped to 0.6–1.5, and recenters the open panel.'], ['Hub:OpenCommandPalette() / Hub:CloseCommandPalette()', 'Opens or dismisses hub-wide search.'], ['Hub:SetCommandKey(Enum.KeyCode)', 'Changes and saves the palette shortcut.']] },
+      { id: 'options', title: 'CreateHub options', columns: optionColumns, rows: [['Name', 'string', '"Rift Hub"', 'Display name.'], ['Id', 'string', 'Derived from Name', 'Stable identity and per-hub folder.'], ['Subtitle', 'string', '""', 'Supporting hub text.'], ['ToggleKey', 'Enum.KeyCode', 'RightShift', 'Toolbar visibility shortcut.'], ['CommandKey', 'Enum.KeyCode', 'F2', 'Command palette shortcut.'], ['ThemeName', 'string', '"Graphite"', 'Built-in palette name.'], ['Theme', 'table', '{}', 'Colour overrides.'], ['Setup', 'boolean or table', 'Enabled', 'First-run flow and optional custom choices.'], ['Settings', 'boolean', 'true', 'Built-in Settings tab, including About, the RiftUI license credit and GitHub link.'], ['Watermark', 'boolean', 'false', 'Optional name, FPS, ping and time strip.'], ['KeybindList', 'boolean', 'false', 'Optional bound-key overlay.'], ['Language', 'string', 'Supported Roblox locale or en', 'Initial interface language.'], ['Translations', 'table', '{}', 'Per-language dictionaries for your own labels.'], ['Stealth', 'boolean', 'false', 'Random names, suppressed notifications, hidden toolbar.']] },
+      { id: 'layout', title: 'Layout and visibility', columns: ['Method', 'Effect'], rows: [['Hub:Tab({ Name, Icon, Description })', 'Creates a toolbar tile and content page.'], ['Tab:Section({ Name, Side, Pinnable })', 'Creates a section; Side is Left or Right, otherwise balanced.'], ['Hub:Open(Tab) / Hub:Close()', 'Opens or closes the current panel.'], ['Hub:SetToolbarVisible(boolean)', 'Shows or hides the toolbar.'], ['Hub:SetScale(number)', 'Sets interface scale, clamped to 0.6–1.5, and recenters the open panel.'], ['Hub:OpenCommandPalette() / Hub:CloseCommandPalette()', 'Opens or dismisses hub-wide search.'], ['Hub:SetCommandKey(Enum.KeyCode)', 'Changes and saves the palette shortcut.'], ['Tab:SetBadge(number | string | nil)', 'Shows a small badge on the toolbar tile; nil or 0 hides it. CreateHub{ ToggleBadges = true } restores counting enabled toggles.'], ['Hub:Window({ Title, Description, Icon, Width, Height })', 'Creates a child window. Add Window:Tab({ Name, Icon }) for tabs, or Window:Section() for a single page.'], ['Window:Open() / Close() / Toggle() / SelectTab(tab)', 'Opens it over the panel with Escape and click-outside to close. Section:Button({ Name, Window = W }) opens it from a button.']] },
       { id: 'lifecycle', title: 'Lifecycle', code: 'Hub:Reinitialize() -- rebuild, preserve values and references\nHub:Destroy() -- remove the GUI and connections', text: ['<code>Reinitialize</code> replays the hub’s recorded calls and forwards old references to the new controls. Theme changes do not require a rebuild.'] },
       { id: 'errors', title: 'Handle loading errors', code: 'xpcall(function()\n    -- Create your hub and controls here\nend, Rift.HandleError)', text: ['<code>Rift.HandleError</code> records the error and shows a failure card. Control callbacks have their own error capture. Developer Mode exposes the state history and captured errors.'] },
     ],
@@ -376,5 +686,5 @@ Hub:SetAutoload("default")`, text: ['Configs save flagged values plus the toolba
     ],
   },
 ]
-export const groups = ['Getting started', 'Components', 'Guides', 'Reference']
+export const groups = ['Overview', 'Getting started', 'Components', 'Guides', 'Reference']
 export const getPage = (slug: string) => pages.find(p => p.slug === slug)

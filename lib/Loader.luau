@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: MPL-2.0
+-- This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+-- If a copy of the MPL was not distributed with this file, obtain one at https://mozilla.org/MPL/2.0/.
 -- Set getgenv().riftcommit to a commit SHA before running this loader.
 -- With no pin, main is used. A failed pin never falls back to another revision.
 local REPOSITORY = "https://raw.githubusercontent.com/Naymmmm/riftui/"
@@ -37,5 +40,6 @@ Rift.AssetBase = base
 if commit ~= "main" then
 	Rift.AssetCacheFolder = Rift.Folder .. "/assets/" .. commit
 end
+if commit ~= "main" then Rift.Version = string.lower(string.sub(commit, 1, 7)) end
 Rift.Commit = commit
 return Rift

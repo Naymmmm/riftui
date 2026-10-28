@@ -11,13 +11,15 @@ import book from 'lucide-static/icons/book-open.svg?raw'
 
 const escape = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 const codeBlocks = new Map<string, string>()
+const revision = __RIFT_REVISION__
+const versionLink = revision.hash ? 'https://github.com/Naymmmm/riftui/commit/' + revision.hash : 'https://github.com/Naymmmm/riftui'
 let currentSlug = ''
 let selectedTheme = 'Graphite'
 let tocObserver: IntersectionObserver | undefined
 let live = false
 const root = document.getElementById('docs')!
 root.innerHTML = '<a class="skip-link" href="#main-content">Skip to content</a>' +
-  '<header class="masthead"><a class="brand" href="#quick-start"><img src="/favicon.svg" alt="" width="27" height="27"><strong>RiftUI</strong><span class="brand-rule"></span><span>Docs</span></a><span class="version">v0.2.0</span>' +
+  '<header class="masthead"><a class="brand" href="#introduction"><img src="/favicon.svg" alt="" width="27" height="27"><strong>RiftUI</strong><span class="brand-rule"></span><span>Docs</span></a><a class="version" href="' + versionLink + '" target="_blank" rel="noreferrer" title="' + (revision.dirty ? 'Local changes based on ' : 'Commit ') + escape(revision.hash || 'source archive') + '">' + escape(revision.version) + '</a>' +
   '<div class="head-links"><a href="https://github.com/Naymmmm/riftui" target="_blank" rel="noreferrer" class="repo-link" aria-label="RiftUI on GitHub">' + github + '</a><a class="sim-link" href="/simulator">Open simulator ' + external + '</a><button id="mobile-menu" class="icon-button" aria-label="Open documentation navigation" aria-expanded="false" aria-controls="sidebar">' + icon('menu') + '</button></div></header>' +
   '<aside class="sidebar" id="sidebar"><div class="search-wrap">' + search + '<input id="search" type="search" placeholder="Find a page…" aria-label="Search documentation" autocomplete="off"><kbd>⌘ K</kbd></div><nav id="navigation" aria-label="Documentation"></nav><div class="sidebar-foot">' + book + '<span>Built with the same library<br>you’re reading about.</span></div></aside>' +
   '<div class="mobile-shade" id="mobile-shade"></div><main id="main-content" tabindex="-1"><div class="reading-layout"><article id="article"></article><aside class="page-toc" aria-label="On this page"><span>On this page</span><nav id="toc"></nav></aside></div></main><div class="announce sr-only" role="status" aria-live="polite"></div>'
@@ -43,7 +45,7 @@ function renderNavigation(query = '') {
   navigation.innerHTML = groups.map(group => {
     const items = matching.filter(p => p.group === group)
     if (!items.length) return ''
-    return '<div class="nav-group"><h2>' + group + '</h2>' + items.map(p => '<a href="#' + p.slug + '"' + (p.slug === currentSlug ? ' aria-current="page"' : '') + '>' + escape(p.title) + (p.slug === 'themes' ? '<span class="nav-dot" aria-hidden="true"></span>' : '') + '</a>').join('') + '</div>'
+    return '<div class="nav-group"><h2>' + group + '</h2>' + items.map(p => '<a href="#' + p.slug + '"' + (p.slug === currentSlug ? ' aria-current="page"' : '') + '>' + escape(p.navTitle || p.title) + (p.slug === 'themes' ? '<span class="nav-dot" aria-hidden="true"></span>' : '') + '</a>').join('') + '</div>'
   }).join('') || '<div class="no-results"><p>No pages found for “' + escape(query) + '”.</p><button id="clear-search">Clear search</button></div>'
   document.getElementById('clear-search')?.addEventListener('click', () => { searchInput.value = ''; renderNavigation(); searchInput.focus() })
 }
@@ -85,12 +87,12 @@ function render(page: DocPage) {
   currentSlug = page.slug
   document.title = page.title + ' — RiftUI docs'
   article.innerHTML = '<div class="breadcrumb"><span>' + page.group + '</span>' + icon('chevron') + '<span>' + escape(page.title) + '</span></div><h1>' + escape(page.title) + '</h1><p class="lead">' + escape(page.summary) + '</p>' +
-    (page.demo ? preview(page) : '') + (page.slug === 'themes' ? themeGallery() : '') +
+    (page.slug === 'introduction' ? '<figure class="intro-banner"><img src="/brand/riftui-banner.webp" alt="RiftUI" width="1280" height="640"></figure>' : '') + (page.demo ? preview(page) : '') + (page.slug === 'themes' ? themeGallery() : '') +
     page.sections.map(s => section(s, page)).join('') +
     '<footer class="article-footer"><a class="source-link" href="https://github.com/Naymmmm/riftui/blob/main/lib/RiftUI.luau" target="_blank" rel="noreferrer">Read the source ' + external + '</a><div class="page-turns">' + (() => {
       const i = pages.indexOf(page)
       return (i > 0 ? '<a href="#' + pages[i - 1].slug + '"><small>Previous</small><span>← ' + escape(pages[i - 1].title) + '</span></a>' : '<span></span>') + (i < pages.length - 1 ? '<a href="#' + pages[i + 1].slug + '"><small>Next</small><span>' + escape(pages[i + 1].title) + ' →</span></a>' : '')
-    })() + '</div><p>RiftUI · Luau library & browser simulator</p></footer>'
+    })() + '</div><p>RiftUI · Roblox UI library</p></footer>'
   document.getElementById('toc')!.innerHTML = (page.demo ? '<a href="#' + page.slug + '/example-view">Example</a>' : '') + page.sections.map(s => '<a href="#' + page.slug + '/' + s.id + '">' + escape(s.title) + '</a>').join('')
   renderNavigation(searchInput.value)
   bindPage(page)
@@ -148,10 +150,10 @@ function closeMenu() {
 }
 function route() {
   const [slug = '', anchor] = location.hash.slice(1).split('/')
-  const page = getPage(slug || 'quick-start')
+  const page = getPage(slug || 'introduction')
   if (!page) {
     currentSlug = ''
-    article.innerHTML = '<h1>Page not found</h1><p class="lead">This documentation link does not match a page.</p><p><a href="#quick-start">Return to Quick start →</a></p>'
+    article.innerHTML = '<h1>Page not found</h1><p class="lead">This documentation link does not match a page.</p><p><a href="#introduction">Return to Introduction →</a></p>'
     document.getElementById('toc')!.innerHTML = ''
     renderNavigation(searchInput.value)
     return

@@ -1,7 +1,43 @@
 export const themes = ['Graphite', 'Ink', 'Slate', 'Ember'] as const
-export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette'
-export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette']
+export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations'
+export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations"]
 const examples: Record<DemoName, string> = {
+  "range-slider": `local delay=S:RangeSlider({Name="Delay",Min=0,Max=500,Step=10,Default={40,120},Suffix=" ms",Callback=function(lo,hi) print("Delay:",lo,hi) end})
+S:Button({Name="Reset range",Callback=function() delay:Set({40,120}) end})`,
+  "progress": `local health=S:Progress({Name="Health",Max=100,Default=82})
+local ammo=S:Progress({Name="Ammo",Max=30,Default=24,Segments=6})
+S:Button({Name="Use ammo",Callback=function() ammo:Set(math.max(0,ammo.Value-1)) health:Set(math.max(0,health.Value-7)) print("Ammo:",ammo.Value) end})`,
+  "stat": `local money=S:Stat({Name="Money",Default=12500,Delta=true,Suffix=" $"})
+S:Button({Name="Earn 100",Callback=function() money:Update(money.Value+100) print("Money:",money.Value) end})
+S:Button({Name="Spend 50",Callback=function() money:Update(money.Value-50) end})`,
+  "sparkline": `local graph=S:Sparkline({Name="Frame rate",Points=16,Min=0,Max=100,Suffix=" fps"})
+for _,v in {58,60,59,55,54,58,60,62,57,59,60,56,61,60,59,60} do graph:Push(v) end
+S:Button({Name="Add sample",Callback=function() local v=math.random(35,70) graph:Push(v) print("Sample:",v) end})
+S:Button({Name="Clear graph",Callback=function() graph:Clear() end})`,
+  "segmented": `S:Segmented({Name="Mode",Options={"Explore","Build","Practice"},Default="Explore",Callback=function(v) print("Mode:",v) end})`,
+  "stepper": `S:Stepper({Name="Burst",Min=1,Max=5,Default=1,Callback=function(v) print("Burst:",v) end})`,
+  "console": `local log=S:Console({Name="Events",Height=120,MaxLines=20})
+log:Log("Ready") log:Log("Waiting for your input", "warn")
+S:Button({Name="Write entry",Callback=function() log:Log("Action completed") print("Entry added") end})`,
+  "player-picker": `S:PlayerPicker({Name="Player",Callback=function(p) print("Player:",p and p.Name or "None") end})`,
+  "dependent-controls": `local enabled=S:Toggle({Name="Enabled",Default=true})
+local group=S:Group({Name="Tuning",DependsOn=enabled})
+group:Slider({Name="Field of view",Min=10,Max=400,Default=120})
+group:Toggle({Name="Team check",Default=true})`,
+  "overlays": `S:Keybind({Name="Sprint",Default=Enum.KeyCode.F,Mode="Toggle",Callback=function(on) print("Sprint:",on) end})
+S:Keybind({Name="Focus",Default=Enum.KeyCode.Q,Mode="Hold"})
+S:Toggle({Name="Watermark",Default=true,Callback=function(on) Hub:SetWatermark(on) end})
+S:Toggle({Name="Keybind list",Default=true,Callback=function(on) Hub:SetKeybindList(on) end})
+Hub:SetWatermark(true) Hub:SetKeybindList(true)`,
+  "tooltips": `S:Slider({Name="Smoothing",Min=0,Max=1,Step=0.05,Default=0.3,Description="Higher values move more slowly. Hover this control for help."})
+S:Button({Name="Run action",Description="Runs your callback once.",Callback=function() print("Action fired") end})`,
+  "translations": `local function language(code) Hub:SetLanguage(code) print("Language:",code) end
+S:Button({Name="Español",Callback=function() language("es") end})
+S:Button({Name="English",Callback=function() language("en") end})
+S:Toggle({Name="Watermark",Default=false,Callback=function(on) Hub:SetWatermark(on) end})
+S:Keybind({Name="Toolbar key",Default=Enum.KeyCode.RightShift,Mode="None"})
+Hub:SetLanguage("es")`,
+
   'command-palette': `S:Toggle({Name="Sprint",Default=true})
 S:Slider({Name="Walk speed",Min=16,Max=100,Default=32})
 S:Button({Name="Run action",Callback=function() print("Action callback ran") end})
