@@ -337,16 +337,37 @@ crypt = {
 	base64_encode = b64encode,
 	base64_decode = b64decode,
 	generatebytes = function(n)
-		local t = {}
-		for i = 1, n do
-			t[i] = string.char(math.random(0, 255))
-		end
-		return b64encode(table.concat(t))
+		if not host.crypto then error("secure random bytes are unavailable", 2) end
+		local result = receiveHostText(host.crypto("random", tostring(n), "", ""))
+		if string.sub(result, 1, 4) == "ERR\31" then error("secure random generation failed", 2) end
+		return result
 	end,
 	generatekey = function()
 		return crypt.generatebytes(32)
 	end,
 }
+-- Keep cryptography optional on hosts without Web Crypto (e.g. the headless harness).
+if host.crypto then
+	local function cryptoCall(op, data, key, iv)
+		local result = receiveHostText(host.crypto(op, data or "", key or "", iv or ""))
+		if string.sub(result, 1, 4) == "ERR\31" then error("crypto operation failed", 3) end
+		return result
+	end
+	crypt.encrypt = function(data, key, iv, mode)
+		assert(mode == nil or mode == "CBC", "only CBC is supported")
+		iv = iv or crypt.generatebytes(16)
+		return cryptoCall("encrypt", b64encode(data), key, iv), iv
+	end
+	crypt.decrypt = function(data, key, iv, mode)
+		assert(mode == nil or mode == "CBC", "only CBC is supported")
+		return b64decode(cryptoCall("decrypt", data, key, iv))
+	end
+	crypt.hash = function(data, algorithm)
+		assert(algorithm == nil or string.lower(algorithm) == "sha256", "only SHA-256 is supported")
+		return cryptoCall("hash", b64encode(data))
+	end
+end
+
 base64_encode = b64encode
 base64_decode = b64decode
 base64 = { encode = b64encode, decode = b64decode }

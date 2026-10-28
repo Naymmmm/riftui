@@ -9,6 +9,7 @@ import { Input } from './input'
 import { measure } from './text'
 import { b64ToBytes, bytesToB64, Vfs } from './vfs'
 import { TextTransfers } from './transfers'
+import { executorCrypto } from './crypto'
 
 export type LogLevel = 'print' | 'warn' | 'error' | 'info'
 export interface LogEntry {
@@ -102,6 +103,10 @@ export class Runtime {
         navigator.clipboard?.writeText(text).catch(() => {})
         this.log('info', 'setclipboard: copied ' + text.length + ' characters')
       },
+      crypto: async (op: string, data: string, key: string, iv: string) => {
+        try { return this.transfers.pack(await executorCrypto(op, data, key, iv)) }
+        catch { return 'ERR' + SEP + 'Crypto operation failed' }
+      },
       profile: () => this.profile,
       register: (step: LuauFn, run: LuauFn) => {
         this.step = step
@@ -168,7 +173,7 @@ export class Runtime {
           body: method === 'GET' || method === 'HEAD' || !body ? undefined : (b64ToBytes(body).slice().buffer as ArrayBuffer),
         })
       } catch (directError) {
-        if (local || method !== 'GET' || !/^https?:\/\//i.test(url)) throw directError
+        if (local || method !== 'GET' || Object.keys(headers || {}).some(k => /^(authorization|x-api-key)$/i.test(k)) || !/^https?:\/\//i.test(url)) throw directError
         res = await fetch('/__rift_http?url=' + encodeURIComponent(url))
         if (res.headers.get('X-Rift-Proxy') !== '1') {
           throw new Error('The browser blocked this URL and this host has no RiftSim image proxy. Use pnpm dev or pnpm preview, or a CORS-enabled image URL.')

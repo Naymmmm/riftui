@@ -7,3 +7,9 @@ dist
 .wrangler
 .dev.vars
 .dev.vars.*
+
+# Private config-server data and local credentials
+private-configs/
+.env
+.env.*
+!.env.example

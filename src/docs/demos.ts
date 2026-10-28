@@ -1,7 +1,21 @@
 export const themes = ['Graphite', 'Ink', 'Slate', 'Ember'] as const
-export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations'
-export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations"]
+export type DemoName = 'overview' | 'button' | 'toggle' | 'slider' | 'dropdown' | 'input' | 'keybind' | 'color-picker' | 'content' | 'themes' | 'notifications' | 'setup' | 'configs' | 'pins' | 'command-palette' | 'range-slider' | 'progress' | 'stat' | 'sparkline' | 'segmented' | 'stepper' | 'console' | 'player-picker' | 'dependent-controls' | 'overlays' | 'tooltips' | 'translations' | 'encrypted-configs' | 'requirements' | 'stealth'
+export const demoNames: DemoName[] = ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth"]
 const examples: Record<DemoName, string> = {
+  requirements: `S:Button({Name="Use feature",Requires="Feature",Callback=function() print("Feature action ran") end})
+S:Slider({Name="Feature amount",Requires="Feature",Min=1,Max=10,Default=3})
+local tests=Tab:Section({Name="Developer test",Side="Right"})
+tests:Toggle({Name="Test result",Default=false,Callback=function(v) getgenv().featureReady=v Hub:RunRequirement("Feature") print(v and "Developer test passed" or "Developer test failed") end})
+tests:Paragraph({Content="The hub developer supplies the test. Turn Test result on to unlock the feature."})`,
+  stealth: `S:Button({Name="Local icons",Callback=function() Hub:Notify({Title="Local asset mode",Content="The toolbar and notifications remain available."}) end})
+S:PlayerPicker({Name="Player"})
+S:Paragraph({Title="Asset policy",Content="Built-in icons use local files. Raw Roblox image IDs are blocked; fonts use a built-in fallback. Avatar initials remain if a thumbnail cannot be cached."})`,
+  'encrypted-configs': `assert(Hub:SetConfigEncryption({Key=crypt.generatekey()}))
+S:Toggle({Name="Sprint",Flag="DocsEncryptedSprint",Default=true})
+S:Slider({Name="Walk speed",Flag="DocsEncryptedSpeed",Min=16,Max=100,Default=32})
+S:Button({Name="Save encrypted",Callback=function() local ok,err=Hub:SaveConfig("demo") print(ok and "Encrypted config saved" or err) end})
+S:Button({Name="Load encrypted",Callback=function() local ok,err=Hub:LoadConfig("demo") print(ok and "Encrypted config restored" or err) end})
+S:Paragraph({Title="Demo key",Content="This preview generates a temporary key. Save, change a value, then load to restore it. Replaying creates a new key."})`,
   "range-slider": `local delay=S:RangeSlider({Name="Delay",Min=0,Max=500,Step=10,Default={40,120},Suffix=" ms",Callback=function(lo,hi) print("Delay:",lo,hi) end})
 S:Button({Name="Reset range",Callback=function() delay:Set({40,120}) end})`,
   "progress": `local health=S:Progress({Name="Health",Max=100,Default=82})
@@ -102,7 +116,8 @@ export function demoSource(name: DemoName, theme = 'Graphite'): string {
   if (!themes.includes(theme as typeof themes[number])) theme = 'Graphite'
   return [
     'local Rift=loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()',
-    'local Hub=Rift:CreateHub({Name="RiftUI example",Id="docs-example",ThemeName=' + JSON.stringify(theme) + ',Setup=false,Settings=false})',
+    name === 'requirements' ? 'getgenv().featureReady=false' : '',
+    'local Hub=Rift:CreateHub({Name="RiftUI example",Id="docs-example",ThemeName=' + JSON.stringify(theme) + ',Setup=false,Settings=false' + (name === 'requirements' ? ',Requirements={Feature={Name="Feature API",Test=function() return getgenv().featureReady==true,"Enable the developer test to use this feature" end}}' : '') + (name === 'stealth' ? ',Stealth=true' : '') + '})',
     'local Tab=Hub:Tab({Name="' + (name === 'overview' ? 'Movement' : name === 'themes' ? 'Appearance' : 'Example') + '",Icon="' + (name === 'themes' ? 'palette' : 'sliders-horizontal') + '"})',
     name === 'overview' ? '' : 'local S=Tab:Section({Name="' + (name === 'pins' ? 'Movement' : 'Controls') + '",Side="Left"})',
     examples[name],

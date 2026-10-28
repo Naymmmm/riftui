@@ -1,7 +1,7 @@
 // Generate real library screenshots and check all documentation examples.
 // Run with Vite on :5199: node scripts/dev/docs-capture.mjs
 import { chromium } from 'playwright-core'
-import { readdirSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 
@@ -13,7 +13,8 @@ const page = await browser.newPage({ viewport: { width: 660, height: 500 }, devi
 const out = 'public/docs/images'
 mkdirSync(out, { recursive: true })
 const errors = []
-const provenance = []
+const only = process.argv.find(a => a.startsWith('--only='))?.slice(7)
+const provenance = only ? JSON.parse(readFileSync(out + '/provenance.json', 'utf8')).images.filter(i => i.file !== only + '.webp' && !(only === 'button' && i.file === 'button-clicked.webp')) : []
 page.on('pageerror', e => errors.push(e.message))
 async function open(demo, theme = 'Graphite') {
   await page.goto('http://localhost:5199/docs/preview.html?demo=' + demo + '&theme=' + theme)
@@ -43,7 +44,8 @@ async function shot(file, demo, state = 'initial', theme = 'Graphite') {
   provenance.push({ file: file + '.webp', origin, cssWidth: 660, cssHeight: 500, pixelRatio: 2 })
 }
 try {
-  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations"]) {
+  for (const demo of ['overview', 'button', 'toggle', 'slider', 'dropdown', 'input', 'keybind', 'color-picker', 'content', 'themes', 'notifications', 'setup', 'configs', 'pins', 'command-palette',"range-slider","progress","stat","sparkline","segmented","stepper","console","player-picker","dependent-controls","overlays","tooltips","translations","encrypted-configs","requirements","stealth"]) {
+    if (only && only !== demo) continue
     await open(demo)
     if (demo === 'dropdown') await clickNode({ name: 'Chip' })
     if (demo === 'color-picker') await clickNode({ name: 'Swatch' })
@@ -65,12 +67,13 @@ try {
     }
   }
   for (const theme of ['Graphite', 'Ink', 'Slate', 'Ember']) {
+    if (only && only !== 'themes') continue
     await open('themes', theme)
     await shot('theme-' + theme.toLowerCase(), 'themes', 'initial', theme)
   }
   if (errors.length) throw new Error(errors.join('\n'))
   writeFileSync(out + '/provenance.json', JSON.stringify({ source: 'Actual library screenshots, not generated mockups', images: provenance }, null, 2) + '\n')
-  console.log('Captured ' + provenance.length + ' images; all 27 examples loaded; button callback verified.')
+  console.log('Captured ' + provenance.length + ' images; requested examples loaded; button callback verified when captured.')
 } finally {
   await browser.close()
 }

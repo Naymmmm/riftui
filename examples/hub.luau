@@ -10,6 +10,14 @@ local Hub = Rift:CreateHub({
 	Id = "rift-hub", -- files live in RiftUI/rift-hub/ (setup.json, configs/)
 	Subtitle = "Baseplate",
 	ToggleKey = Enum.KeyCode.RightShift,
+	-- Stealth = true, -- local assets; an explicit true/false is read-only in Settings
+	Requirements = {
+		PlayerRoster = { Name = "Player roster", Test = function()
+			-- This test belongs to this example script, not to RiftUI.
+			local ok, roster = pcall(function() return game:GetService("Players"):GetPlayers() end)
+			return ok and type(roster) == "table", "This script cannot read the player roster"
+		end },
+	},
 	KeybindList = true, -- floating card of bound keys; users can turn it off in Settings
 	-- your own strings next to RiftUI's built-in Spanish, Portuguese, German and French
 	Translations = {
@@ -121,7 +129,7 @@ local function countPlayers() PlayersTab:SetBadge(#Players:GetPlayers()) end
 Players.PlayerAdded:Connect(countPlayers)
 Players.PlayerRemoving:Connect(function() task.defer(countPlayers) end)
 countPlayers()
-local Target = PlayersTab:Section({ Name = "Target" })
+local Target = PlayersTab:Section({ Name = "Target", Requires = "PlayerRoster" })
 -- fills itself from Players and keeps up as people join and leave
 Target:PlayerPicker({ Name = "Player", Flag = "TargetPlayer" })
 Target:Button({ Name = "Spectate", Callback = function()
@@ -172,6 +180,10 @@ task.spawn(function()
 	end
 end)
 
-Hub:Notify({ Title = "Rift Hub loaded", Content = "Click a tile to open it. F2 searches everything. RightShift hides the toolbar.", Icon = "sparkles", Duration = 5 })
+local loadedHint
+if not game:GetService("UserInputService").TouchEnabled then
+	loadedHint = "F2 to search. Right Shift to toggle the toolbar."
+end
+Hub:Notify({ Title = "Rift Hub loaded", Content = loadedHint, Icon = "check", Duration = 5 })
 
 end, Rift.HandleError)

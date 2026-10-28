@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "467f391-dev",
+	Version = "78a92da-dev",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -39,6 +39,57 @@ local RiftUI = {
 	Hubs = {},
 	DeveloperMode = false,
 }
+
+-- Secure asset policy is shared by hubs created from this library instance.
+local initialStealth = false
+pcall(function()
+	local env = typeof(getgenv) == "function" and getgenv() or _G
+	initialStealth = env.RIFTUI_SECURE == true
+end)
+local bootStealth = initialStealth
+local secureHubs = setmetatable({}, { __mode = "k" })
+local localAssetIds = {}
+local watchedAssets = setmetatable({}, { __mode = "k" })
+local function secureAssets()
+	return bootStealth or next(secureHubs) ~= nil
+end
+local nativeWarn = warn
+local function warn(...)
+	if not secureAssets() then nativeWarn(...) end
+end
+local function localImage(value)
+	return value == "" or (type(value) == "string" and (localAssetIds[value] or string.match(value, "^rbxasset://") or string.match(value, "^rbxtemp://")))
+end
+local function secureProperty(prop, value)
+	if not secureAssets() then return value end
+	if (prop == "Image" or prop == "HoverImage" or prop == "PressedImage") and not localImage(value) then return "" end
+	if prop == "FontFace" and typeof(value) == "Font" then
+		local family = value.Family
+		if type(family) == "string" and (string.match(family, "^rbxassetid://") or string.match(family, "^https?://")) then
+			local fallback = Font.fromEnum(Enum.Font.BuilderSans)
+			return Font.new(fallback.Family, value.Weight, value.Style)
+		end
+	end
+	return value
+end
+local function watchAsset(inst)
+	if watchedAssets[inst] then return end
+	local props = {}
+	if inst:IsA("ImageLabel") or inst:IsA("ImageButton") then table.insert(props, "Image") end
+	if inst:IsA("ImageButton") then table.insert(props, "HoverImage") table.insert(props, "PressedImage") end
+	if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then table.insert(props, "FontFace") end
+	if #props == 0 then return end
+	watchedAssets[inst] = true
+	for _, prop in props do
+		local function apply()
+			local old = inst[prop]
+			local value = secureProperty(prop, old)
+			if value ~= old then inst[prop] = value end
+		end
+		inst:GetPropertyChangedSignal(prop):Connect(apply)
+		apply()
+	end
+end
 
 ---------------------------------------------------------------- services
 local function service(name)
@@ -144,7 +195,8 @@ local DefaultTheme = {
 
 local FONT_ID = "rbxassetid://12187365364" -- Inter
 local function inter(weight)
-	return Font.new(FONT_ID, weight or Enum.FontWeight.Regular)
+	local family = secureAssets() and Font.fromEnum(Enum.Font.BuilderSans).Family or FONT_ID
+	return Font.new(family, weight or Enum.FontWeight.Regular)
 end
 local MONO = Font.fromName("RobotoMono", Enum.FontWeight.Medium)
 
@@ -161,6 +213,7 @@ local function themeColor(theme, key)
 	return { _theme = theme, _key = key }
 end
 local function setThemed(inst, prop, value)
+	value = secureProperty(prop, value)
 	if type(value) == "table" and rawget(value, "_theme") then
 		local bindings = themeBindings[inst] or {}
 		themeBindings[inst] = bindings
@@ -184,6 +237,7 @@ local function create(className: string, props: { [string]: any }?, children: { 
 	for _, c in children or {} do
 		c.Parent = inst
 	end
+	watchAsset(inst)
 	if parent then
 		inst.Parent = parent
 	end
@@ -493,6 +547,7 @@ local function customAsset(fileName: string, remote: string): string?
 		warn("[RiftUI] couldn't load " .. remote .. ": " .. tostring(result) .. " (falling back to text icons)")
 		return nil
 	end
+	if type(result) == "string" then localAssetIds[result] = true end
 	return result
 end
 
@@ -513,7 +568,8 @@ function RiftUI:GetIcon(name: string?)
 	if type(name) ~= "string" then
 		return nil
 	end
-	if string.find(name, "^rbxasset") then
+	if string.find(name, "^rbxasset") or string.find(name, "^rbxtemp://") then
+		if secureAssets() and not localImage(name) then return nil end
 		return { Image = name, ImageRectOffset = Vector2.zero, ImageRectSize = Vector2.zero }
 	end
 	local idx = iconIndex(name)
@@ -898,6 +954,14 @@ function RiftUI:CreateHub(options)
 		_scale = 1,
 	}, Hub)
 
+	assert(options.Stealth == nil or type(options.Stealth) == "boolean", "Stealth must be a boolean")
+	local stealth = options.Stealth
+	if stealth == nil then stealth = initialStealth end
+	self._stealthLocked = options.Stealth ~= nil or initialStealth
+	self.Stealth = stealth == true
+	if self.Stealth then secureHubs[self] = true end
+	bootStealth = false
+	self:_initRequirements(options.Requirements)
 	local gui = create("ScreenGui", {
 		Name = "RiftUI",
 		IgnoreGuiInset = true,
@@ -910,6 +974,7 @@ function RiftUI:CreateHub(options)
 	end
 	gui.Parent = guiParent()
 	self.Gui = gui
+	self:_connect(gui.DescendantAdded, watchAsset)
 	self.UIScale = create("UIScale", { Scale = 1, Parent = gui })
 	self:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if self._open then self:_fitPanel(self._open, false) end
@@ -1048,6 +1113,15 @@ function RiftUI:CreateHub(options)
 	iconLabel("search", 19, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = self.CommandButton })
 	self:_connect(self.CommandButton.MouseButton1Click, function() self:OpenCommandPalette() end)
 	self:_bindInput()
+	if options.ConfigEncryption then
+		local ok, err = self:SetConfigEncryption(options.ConfigEncryption)
+		if not ok then self:_teardown() error("[RiftUI] " .. err, 2) end
+		if saved and saved.EncryptConfigs ~= nil then self._encryptConfigs = saved.EncryptConfigs == true end
+	end
+	if options.ConfigServer then
+		local ok, err = self:SetConfigServer(options.ConfigServer)
+		if not ok then self:_teardown() error("[RiftUI] " .. err, 2) end
+	end
 	if options.Settings ~= false then
 		self:_buildSettings()
 	end
@@ -1092,12 +1166,210 @@ function RiftUI:CreateHub(options)
 			end)
 		end
 		if language and language ~= "en" then self:SetLanguage(language, true) end
+		if next(self._requirements) then self:RunRequirements() end
 		self:_autoload()
 		if RiftUI.State == "Building" or RiftUI.State == "Reinitializing" then
 			setState("Ready", self.Name)
 		end
 	end)
 	return self
+end
+
+---------------------------------------------------------------- developer-defined requirements
+local function requirementIds(required)
+	if required == nil then return {} end
+	if type(required) == "string" then return { required } end
+	assert(type(required) == "table", "Requires must be a requirement ID or a list of IDs")
+	local ids, seen = {}, {}
+	for _, id in required do
+		assert(type(id) == "string" and id ~= "", "Requires must contain requirement IDs")
+		if not seen[id] then seen[id] = true table.insert(ids, id) end
+	end
+	return ids
+end
+
+local function mergedRequirements(parent, own)
+	local out, seen = {}, {}
+	for _, list in { requirementIds(parent), requirementIds(own) } do
+		for _, id in list do if not seen[id] then seen[id] = true table.insert(out, id) end end
+	end
+	return out
+end
+
+function Hub:_initRequirements(definitions)
+	self._requirements, self._requirementResults, self._requirementRuns = {}, {}, {}
+	self._requiredControls, self._requirementWatchers, self._requirementThreads = {}, {}, {}
+	assert(definitions == nil or type(definitions) == "table", "Requirements must be a table of developer tests")
+	for id, spec in definitions or {} do
+		assert(type(id) == "string" and id ~= "", "Requirements must use named IDs")
+		if type(spec) == "function" then spec = { Test = spec } end
+		assert(type(spec) == "table" and type(spec.Test) == "function", "Requirement " .. id .. " needs a developer-defined Test function")
+		assert(spec.Name == nil or type(spec.Name) == "string", "Requirement Name must be a string")
+		assert(spec.Message == nil or type(spec.Message) == "string", "Requirement Message must be a string")
+		local timeout = spec.Timeout or 5
+		assert(type(timeout) == "number" and timeout >= 0.1 and timeout <= 30, "Requirement Timeout must be 0.1–30 seconds")
+		self._requirements[id] = { Test = spec.Test, Name = spec.Name or id, Message = spec.Message, Timeout = timeout }
+		self._requirementResults[id] = { Id = id, Name = spec.Name or id, Status = "pending", Passed = false, Message = "Not checked yet" }
+	end
+end
+
+function Hub:CanUse(required)
+	for _, id in requirementIds(required) do
+		local result = self._requirementResults[id]
+		if not result then return false, "Unknown requirement: " .. id end
+		if not result.Passed then
+			if result.Status == "pending" then return false, "Checking " .. result.Name .. "…" end
+			return false, result.Message or (result.Name .. " is unavailable")
+		end
+	end
+	return true
+end
+
+function Hub:GetRequirement(id)
+	local result = self._requirementResults[id]
+	return result and table.clone(result) or nil
+end
+
+function Hub:OnRequirementsChanged(callback)
+	assert(type(callback) == "function", "callback must be a function")
+	local watcher = { Callback = callback, Connected = true }
+	table.insert(self._requirementWatchers, watcher)
+	return { Disconnect = function() watcher.Connected = false end }
+end
+
+function Hub:_requirementsChanged()
+	if self._destroyed then return end
+	for _, control in self._requiredControls do
+		if control.Frame.Parent then
+			local allowed, reason = self:CanUse(control.Requires)
+			control.Available, control.RequirementMessage = allowed, reason
+			if control._requirementOverlay then
+				control._requirementOverlay.Visible = not allowed
+				control._requirementReason.Text = reason or ""
+			end
+			if not allowed then
+				-- A popup opened before a test changed must not bypass the new gate.
+				if self._popup then
+					local anchor = self._popup.Anchor
+					if anchor and anchor:IsDescendantOf(control.Frame) then self:_closePopup() end
+				end
+			else
+				if control._requirementRestore then self:_restoreRequiredControl(control) end
+				if control._pendingRequirementDefault then
+					control._pendingRequirementDefault = nil
+					if control.Type == "Toggle" and control.Value then control:_emit(true) end
+				end
+			end
+		end
+	end
+	self:_keybindsChanged()
+	for _, watcher in self._requirementWatchers do
+		if watcher.Connected then
+			local snapshot = {}
+			for id, result in self._requirementResults do snapshot[id] = table.clone(result) end
+			task.spawn(function()
+				local ok, err = pcall(watcher.Callback, snapshot)
+				if not ok then recordError(tostring(err), nil, "requirements changed") end
+			end)
+		end
+	end
+end
+
+function Hub:RunRequirement(id)
+	local spec = self._requirements[id]
+	if not spec then return { Id = id, Name = id, Passed = false, Status = "failed", Message = "Unknown requirement: " .. tostring(id) } end
+	if self._requirementThreads[id] then pcall(task.cancel, self._requirementThreads[id]) end
+	local run = (self._requirementRuns[id] or 0) + 1
+	self._requirementRuns[id] = run
+	self._requirementResults[id] = { Id = id, Name = spec.Name, Passed = false, Status = "pending", Message = "Checking…" }
+	self:_requirementsChanged()
+	local finished, success, passed, message = false, false, false, nil
+	local thread = task.spawn(function()
+		success, passed, message = pcall(spec.Test, self)
+		finished = true
+	end)
+	self._requirementThreads[id] = thread
+	local started = os.clock()
+	while not finished and not self._destroyed and self._requirementRuns[id] == run and os.clock() - started < spec.Timeout do task.wait() end
+	if self._destroyed or self._requirementRuns[id] ~= run then pcall(task.cancel, thread) return self:GetRequirement(id) end
+	if not finished then pcall(task.cancel, thread) end
+	self._requirementThreads[id] = nil
+	local result = { Id = id, Name = spec.Name, Passed = finished and success and passed == true, Status = "failed" }
+	if not finished then
+		result.Status, result.Message = "timeout", spec.Name .. " test timed out"
+	elseif not success then
+		result.Message = spec.Message or (spec.Name .. " test raised an error")
+		-- Test errors belong to the developer. Keep them in the result, not a generic VM failure.
+		result.Error = tostring(passed)
+	elseif passed ~= true then
+		result.Message = type(message) == "string" and message or spec.Message or (spec.Name .. " is unavailable")
+	else
+		result.Status, result.Message = "passed", type(message) == "string" and message or "Available"
+	end
+	self._requirementResults[id] = result
+	self:_requirementsChanged()
+	return table.clone(result)
+end
+
+function Hub:RunRequirements()
+	self._requirementBatch = (self._requirementBatch or 0) + 1
+	local batch = self._requirementBatch
+	local ids = {}
+	for id in self._requirements do table.insert(ids, id) end
+	table.sort(ids)
+	-- Mark the whole set pending so a recheck cannot use stale passing results.
+	for _, id in ids do
+		self._requirementRuns[id] = (self._requirementRuns[id] or 0) + 1
+		self._requirementResults[id] = { Id = id, Name = self._requirements[id].Name, Passed = false, Status = "pending", Message = "Checking…" }
+	end
+	self:_requirementsChanged()
+	local results = {}
+	for _, id in ids do
+		if self._destroyed or batch ~= self._requirementBatch then break end
+		results[id] = self:RunRequirement(id)
+	end
+	return results
+end
+
+function Hub:Guard(required, callback)
+	local ids = requirementIds(required)
+	assert(type(callback) == "function", "Guard needs a callback")
+	return function(...)
+		local allowed, reason = self:CanUse(ids)
+		if not allowed then return false, reason end
+		return callback(...)
+	end
+end
+
+function Hub:_finishRequiredControl(control)
+	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
+	local theme, row = self.Theme, control.Frame
+	local overlay = create("TextButton", {
+		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
+		Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = row,
+	})
+	text({ Parent = overlay, Text = control.Name, TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
+		Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, -28, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
+	local reason = text({ Parent = overlay, Text = "", TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
+		Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, -28, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
+	iconLabel("lock", 14, theme.SubText, { Parent = overlay, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), ZIndex = 11 })
+	control._requirementOverlay, control._requirementReason = overlay, reason
+	self:_connect(overlay.MouseButton1Click, function()
+		self:Notify({ Title = control.Name .. " unavailable", Content = control.RequirementMessage or "Requirements are still being checked.", Icon = "lock", Duration = 4 })
+	end)
+	self:_connect(overlay.MouseEnter, function() self:_showTip(overlay, control.RequirementMessage or "Checking requirements…") end)
+	self:_connect(overlay.MouseLeave, function() if self._tipFor == overlay then self:_hideTip() end end)
+	local originalSet = control.Set
+	if originalSet then
+		control.Set = function(c, ...)
+			local allowed, why = c:IsAvailable()
+			if not allowed then return false, why end
+			return originalSet(c, ...)
+		end
+	end
+	table.insert(self._requiredControls, control)
+	self:_requirementsChanged()
+	return control
 end
 
 function Hub:_connect(signal, fn)
@@ -1538,10 +1810,6 @@ end
 ]]
 function Hub:Notify(options)
 	options = type(options) == "table" and options or { Title = tostring(options) }
-	if self.Stealth and not options.Force then
-		self._suppressed = (self._suppressed or 0) + 1
-		return
-	end
 	local theme = self.Theme
 	local duration = options.Duration or 4
 	local width = math.min(300, math.max(160, viewport().X / self._scale - 28))
@@ -1676,43 +1944,21 @@ end
 ---------------------------------------------------------------- stealth
 function Hub:SetStealth(on: boolean)
 	on = on == true
-	if self.Stealth == on then
-		return
-	end
 	self.Stealth = on
+	secureHubs[self] = on and true or nil
 	if on then
-		self._realNames = {}
-		local function hide(inst)
-			if self._realNames[inst] == nil then
-				self._realNames[inst] = inst.Name
-				inst.Name = randomName()
+		-- Inspect live instances too; startup mode is needed to avoid earlier loads.
+		for _, hub in RiftUI.Hubs do
+			for _, inst in hub.Gui:GetDescendants() do
+				watchAsset(inst)
+				if inst:IsA("ImageLabel") or inst:IsA("ImageButton") then inst.Image = secureProperty("Image", inst.Image) end
+				if inst:IsA("ImageButton") then inst.HoverImage = secureProperty("HoverImage", inst.HoverImage) inst.PressedImage = secureProperty("PressedImage", inst.PressedImage) end
+				if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then inst.FontFace = secureProperty("FontFace", inst.FontFace) end
 			end
 		end
-		hide(self.Gui)
-		for _, d in self.Gui:GetDescendants() do
-			hide(d)
-		end
-		self._stealthConn = self.Gui.DescendantAdded:Connect(hide)
-		self:SetToolbarVisible(false, true)
-		if self._watermark then self._watermark.Frame.Visible = false end
-		if self._keylist then self._keylist.Frame.Visible = false end
-	else
-		if self._stealthConn then
-			self._stealthConn:Disconnect()
-			self._stealthConn = nil
-		end
-		for inst, name in self._realNames or {} do
-			if inst.Parent or inst == self.Gui then
-				inst.Name = name
-			end
-		end
-		if self._watermark then self._watermark.Frame.Visible = true end
-		if self._keylist then self._keylist.Frame.Visible = true end
-		self._realNames = nil
 	end
-	if self._stealthControl then
-		self._stealthControl:Set(on, true)
-	end
+	if self._stealthControl then self._stealthControl:Set(on, true) end
+	if self._stealthStatus then self._stealthStatus:Set(on and "Script: On" or "Script: Off") end
 end
 
 ---------------------------------------------------------------- tabs
@@ -1728,6 +1974,7 @@ function Hub:Tab(options)
 		Description = options.Description,
 		Icon = options.Icon,
 		Sections = {},
+		Requires = requirementIds(options.Requires),
 		_internal = options._internal,
 		_count = 0,
 	}, Tab)
@@ -1965,6 +2212,7 @@ function Tab:Section(options)
 		Name = options.Name or "Section",
 		Side = side,
 		Controls = {},
+		Requires = mergedRequirements(self.Requires, options.Requires),
 		Pinned = false,
 		_internal = self._internal,
 		_order = 0,
@@ -2098,7 +2346,9 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		Callback = options.Callback or function() end,
 		_internal = self._internal,
 		_changed = {},
+		Requires = mergedRequirements(self.Requires, options.Requires),
 	}
+	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
 	function control:OnChanged(fn)
 		table.insert(self._changed, fn)
 		return self
@@ -2108,8 +2358,10 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		self.Frame.Visible = v
 	end
 	function control:_emit(...)
+		if not self:IsAvailable() then return false, select(2, self:IsAvailable()) end
 		local args = table.pack(...)
 		task.spawn(function()
+			if not self:IsAvailable() then return end
 			local ok, err = xpcall(self.Callback, debug.traceback, table.unpack(args, 1, args.n))
 			if not ok then
 				local message = string.match(tostring(err), "^[^\n]*")
@@ -2130,7 +2382,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 			end
 		end)
 		for _, fn in self._changed do
-			task.spawn(fn, ...)
+			task.spawn(function() if self:IsAvailable() then fn(table.unpack(args, 1, args.n)) end end)
 		end
 	end
 	if control.Flag then
@@ -2261,9 +2513,9 @@ function Section:Toggle(options)
 	end)
 	self.Tab:_recount()
 	if c.Value and not hub._replaying then
-		c:_emit(true)
+		if #c.Requires > 0 and not c:IsAvailable() then c._pendingRequirementDefault = true else c:_emit(true) end
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Button
@@ -2307,6 +2559,7 @@ function Section:Button(options)
 		iconLabel("chevron-right", 14, theme.SubText, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 20, 0.5, 0), Parent = btn })
 	end
 	hub:_connect(btn.MouseButton1Click, function()
+		if not c:IsAvailable() then return end
 		if c.Window then c.Window:Open() end
 		c:_emit()
 	end)
@@ -2314,7 +2567,7 @@ function Section:Button(options)
 		btn.Text = t
 		self.Name = t
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Slider
@@ -2439,7 +2692,7 @@ function Section:Slider(options)
 		end
 		render()
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Dropdown
@@ -2642,7 +2895,7 @@ function Section:Dropdown(options)
 		end
 		hub:_openPopup(chip, frame)
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Input
@@ -2699,7 +2952,7 @@ function Section:Input(options)
 			end
 		end)
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Keybind
@@ -2784,6 +3037,10 @@ function Section:Keybind(options)
 		return input.UserInputType == v
 	end
 	hub:_connect(UserInputService.InputBegan, function(input)
+		if not c:IsAvailable() then
+			if listening then listening = false hub._listening = false render() end
+			return
+		end
 		if listening then
 			local key
 			if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -2824,7 +3081,7 @@ function Section:Keybind(options)
 			hub:_keybindsChanged()
 		end
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- ColorPicker
@@ -3016,7 +3273,7 @@ function Section:ColorPicker(options)
 			end
 		end)
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Label / Paragraph / info rows
@@ -3029,7 +3286,7 @@ function Section:Label(textValue: string)
 		label.Text = t
 		self.Name = t
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 function Section:Paragraph(options)
@@ -3062,7 +3319,7 @@ function Section:Paragraph(options)
 			body.Text = content
 		end
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 -- A label with a quiet value on the right. With onClick the value is a button that still
@@ -3093,7 +3350,7 @@ function Section:_info(name: string, value: string, onClick)
 	function c:Set(v: string)
 		valueLabel.Text = v
 	end
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Group (dependent controls)
@@ -3122,6 +3379,7 @@ function Section:Group(options)
 	local group = setmetatable({
 		Hub = hub, Tab = self.Tab, Name = options.Name or "Options", Parent = self,
 		Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
+		Requires = mergedRequirements(self.Requires, options.Requires),
 		_internal = self._internal, _order = 0, _isGroup = true,
 	}, Section)
 	group.Id = self.Id .. "/" .. group.Name
@@ -3252,7 +3510,7 @@ function Section:RangeSlider(options)
 			dragging = nil
 		end
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Progress / meter
@@ -3309,7 +3567,7 @@ function Section:Progress(options)
 	end
 	function c:Get() return self.Value end
 	render(false)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Stat
@@ -3367,7 +3625,7 @@ function Section:Stat(options)
 	c.Set = c.Update
 	function c:Get() return self.Value end
 	value.Text = show(c.Value)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Sparkline
@@ -3444,7 +3702,7 @@ function Section:Sparkline(options)
 	end
 	function c:Get() return self.Values[#self.Values] end
 	hub:_connect(area:GetPropertyChangedSignal("AbsoluteSize"), draw)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Segmented
@@ -3487,7 +3745,7 @@ function Section:Segmented(options)
 	end
 	function c:Get() return self.Value end
 	render(false)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Stepper
@@ -3544,7 +3802,7 @@ function Section:Stepper(options)
 	end
 	hold(minus, -1)
 	hold(plus, 1)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- Console
@@ -3619,13 +3877,36 @@ function Section:Console(options)
 			hub:Notify({ Title = "No clipboard", Content = "This executor can't copy text.", Tone = hub.Theme.Warning })
 		end
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- PlayerPicker
 local function initials(name: string): string
 	local a, b = string.match(name, "^%W*(%w)%w*%W+(%w)")
 	return string.upper(a and (a .. b) or string.sub(string.gsub(name, "%W", ""), 1, 2))
+end
+
+local function cachedHeadshot(player)
+	if not hasAssets then return nil end
+	local id = tonumber(player.UserId)
+	if not id or id < 1 or id % 1 ~= 0 then return nil end
+	local folder = RiftUI.AssetCacheFolder or (RiftUI.Folder .. "/assets")
+	local path = folder .. "/avatar-" .. tostring(id) .. ".png"
+	local ok, result = pcall(function()
+		if not isfile(path) then
+			local url = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" .. tostring(id) .. "&size=150x150&format=Png&isCircular=false"
+			local response = HttpService:JSONDecode(game:HttpGet(url))
+			local item = response.data and response.data[1]
+			assert(item and item.state == "Completed" and type(item.imageUrl) == "string" and string.match(item.imageUrl, "^https://"), "thumbnail unavailable")
+			local bytes = game:HttpGet(item.imageUrl)
+			assert(type(bytes) == "string" and #bytes <= 1024 * 1024 and string.sub(bytes, 1, 8) == "\137PNG\r\n\26\n", "invalid thumbnail")
+			ensureFolder(RiftUI.Folder) ensureFolder(RiftUI.Folder .. "/assets") ensureFolder(folder)
+			writefile(path, bytes)
+		end
+		return getcustomasset(path)
+	end)
+	if ok and type(result) == "string" then localAssetIds[result] = true return result end
+	return nil
 end
 
 local function avatar(player, size: number, theme, props)
@@ -3636,9 +3917,10 @@ local function avatar(player, size: number, theme, props)
 		local img = create("ImageLabel", { Name = "Thumb", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = face }, { corner(size / 2) })
 		task.spawn(function()
 			local ok, url = pcall(function()
+				if secureAssets() then return cachedHeadshot(player) end
 				return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
 			end)
-			if ok and url and img.Parent then img.Image = url end
+			if ok and url and img.Parent then img.Image = secureProperty("Image", url) end
 		end)
 	end
 	for k, v in props or {} do face[k] = v end
@@ -3754,7 +4036,7 @@ function Section:PlayerPicker(options)
 		refreshList = build
 		hub:_openPopup(chip, frame, function() refreshList = nil end)
 	end)
-	return c
+	return self.Hub:_finishRequiredControl(c)
 end
 
 ---------------------------------------------------------------- pinning
@@ -3922,6 +4204,12 @@ local function decodeValue(control, data, silent: boolean?)
 	end
 end
 
+function Hub:_restoreRequiredControl(control)
+	local value = control._requirementRestore
+	control._requirementRestore = nil
+	if value then pcall(decodeValue, control, value, true) end
+end
+
 local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true }
 
 function Hub:_dir(): string
@@ -3935,31 +4223,239 @@ end
 function Hub:_flagValues()
 	local out = {}
 	for flag, control in RiftUI.Flags do
-		if control.Section and control.Section.Hub == self and SAVABLE[control.Type] and not control._internal then
+		if control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and SAVABLE[control.Type] and not control._internal then
 			out[flag] = encodeValue(control)
 		end
 	end
 	return out
 end
 
-function Hub:SaveConfig(name: string): (boolean, string?)
-	if not hasFS then
-		return false, "this executor has no file functions"
+-- Optional authenticated config encryption. AES itself stays in the crypto provider.
+local CONFIG_LIMIT = 256 * 1024
+local CONFIG_ENCRYPTED = "riftui-encrypted-config"
+local CONFIG_CIPHER = "AES-256-CBC-HMAC-SHA256"
+local CONFIG_ENCRYPTED_PREFIX = "RIFTCFG2:"
+local function configName(name)
+	return type(name) == "string" and #name > 0 and #name <= 80 and string.match(name, "^[%w%s%-_]+$") ~= nil
+end
+local function hashBytes(provider, value)
+	local hex = provider.hash(value, "sha256")
+	assert(type(hex) == "string" and #hex == 64 and string.match(hex, "^%x+$"), "SHA-256 provider required")
+	return (string.gsub(hex, "%x%x", function(pair) return string.char(tonumber(pair, 16)) end))
+end
+local function hmac(provider, key, value)
+	if #key > 64 then key = hashBytes(provider, key) end
+	key ..= string.rep("\0", 64 - #key)
+	local inner, outer = {}, {}
+	for i = 1, 64 do
+		local b = string.byte(key, i)
+		inner[i], outer[i] = string.char(bit32.bxor(b, 0x36)), string.char(bit32.bxor(b, 0x5c))
 	end
-	name = tostring(name or "default")
-	if not string.match(name, "^[%w%s%-_]+$") then
-		return false, "use letters, numbers, spaces, - or _"
+	return hashBytes(provider, table.concat(outer) .. hashBytes(provider, table.concat(inner) .. value))
+end
+local function hexBytes(value)
+	return (string.gsub(value, ".", function(c) return string.format("%02x", string.byte(c)) end))
+end
+local function sameTag(a, b)
+	if type(a) ~= "string" or #a ~= #b then return false end
+	local diff = 0
+	for i = 1, #b do diff = bit32.bor(diff, bit32.bxor(string.byte(a, i), string.byte(b, i))) end
+	return diff == 0
+end
+local function authenticatedText(envelope)
+	return CONFIG_ENCRYPTED .. "\0" .. "1\0" .. CONFIG_CIPHER .. "\0" .. envelope.IV .. "\0" .. envelope.Ciphertext
+end
+
+function Hub:SetConfigEncryption(options)
+	if options == nil or options == false then
+		self._configEncryption, self._encryptConfigs = nil, false
+		return true
 	end
-	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale, CommandKey = self.CommandKey.Name, SavedAt = os.time() }
-	for id, pos in self.Pins do
-		data.Pins[id] = { pos.X, pos.Y }
+	if type(options) ~= "table" or (type(options.Key) ~= "string" and type(options.Key) ~= "function") then
+		return false, "ConfigEncryption needs a 32-byte Base64 key or key provider"
 	end
-	ensureFolder(RiftUI.Folder)
-	ensureFolder(self:_dir())
-	ensureFolder(self:_configDir())
-	writefile(self:_configDir() .. "/" .. name .. ".json", HttpService:JSONEncode(data))
-	self:_configsChanged()
+	local provider = options.Crypto or RiftUI.ConfigCrypto or (typeof(crypt) == "table" and crypt)
+	for _, method in { "encrypt", "decrypt", "hash", "generatebytes", "base64encode", "base64decode" } do
+		if type(provider) ~= "table" or type(provider[method]) ~= "function" then
+			return false, "encrypted configs require an AES-CBC/SHA-256 crypto provider"
+		end
+	end
+	self._configEncryption = { Key = options.Key, Crypto = provider }
+	self._encryptConfigs = options.Enabled ~= false
 	return true
+end
+
+function Hub:_configKeys(options)
+	local configured = self._configEncryption
+	local provider = (options and options.Crypto) or (configured and configured.Crypto) or RiftUI.ConfigCrypto or (typeof(crypt) == "table" and crypt)
+	assert(type(provider) == "table", "crypto provider unavailable")
+	local key = (options and options.Key) or (configured and configured.Key)
+	if type(key) == "function" then key = key() end
+	assert(type(key) == "string" and #key == 44 and string.match(key, "^[%w+/]+=$"), "a 32-byte Base64 key is required")
+	local raw = provider.base64decode(key)
+	assert(#raw == 32 and provider.base64encode(raw) == key, "a 32-byte Base64 key is required")
+	-- Independent encryption and authentication keys derived from a random master key.
+	return provider, provider.base64encode(hmac(provider, raw, "RiftUI config encryption v1")), hmac(provider, raw, "RiftUI config authentication v1")
+end
+
+function Hub:_encryptConfig(payload, options)
+	local ok, envelope = pcall(function()
+		local provider, aesKey, macKey = self:_configKeys(options)
+		local json = HttpService:JSONEncode(payload)
+		assert(#json <= CONFIG_LIMIT, "config too large")
+		local iv = provider.generatebytes(16)
+		assert(type(iv) == "string" and #provider.base64decode(iv) == 16, "invalid IV")
+		local ciphertext = provider.encrypt(json, aesKey, iv, "CBC")
+		assert(type(ciphertext) == "string" and #ciphertext <= CONFIG_LIMIT * 2, "invalid ciphertext")
+		local bytes = provider.base64decode(ciphertext)
+		assert(#bytes > 0 and #bytes % 16 == 0 and provider.base64encode(bytes) == ciphertext, "Base64 ciphertext required")
+		local out = { Format = CONFIG_ENCRYPTED, Version = 1, Algorithm = CONFIG_CIPHER, IV = iv, Ciphertext = ciphertext }
+		out.Tag = hexBytes(hmac(provider, macKey, authenticatedText(out)))
+		return out
+	end)
+	if not ok then return nil, "couldn't encrypt config; check the key and crypto provider" end
+	return envelope
+end
+
+function Hub:_decodeConfig(value, options)
+	local original
+	local ok, payload = pcall(function()
+		if type(value) == "string" then
+			assert(#value <= CONFIG_LIMIT * 2, "config too large")
+			value = HttpService:JSONDecode(value)
+		end
+		assert(type(value) == "table", "invalid config")
+		if value.Format == CONFIG_ENCRYPTED then
+			original = value
+			assert(value.Version == 1 and value.Algorithm == CONFIG_CIPHER, "unsupported encrypted config")
+			assert(type(value.IV) == "string" and #value.IV == 24 and type(value.Ciphertext) == "string" and #value.Ciphertext <= CONFIG_LIMIT * 2, "invalid ciphertext")
+			local provider, aesKey, macKey = self:_configKeys(options)
+			assert(sameTag(value.Tag, hexBytes(hmac(provider, macKey, authenticatedText(value)))), "authentication failed")
+			-- Verify the MAC before the AES provider sees ciphertext.
+			local plain = provider.decrypt(value.Ciphertext, aesKey, value.IV, "CBC")
+			assert(type(plain) == "string" and #plain <= CONFIG_LIMIT, "invalid plaintext")
+			value = HttpService:JSONDecode(plain)
+		end
+		-- Plain local configs predate the sharing envelope.
+		if value.Flags then
+			assert(not (options and options.Remote), "remote config must identify its hub")
+			value = { Hub = self.Id, Data = value }
+		end
+		assert(type(value) == "table" and value.Hub == self.Id and type(value.Data) == "table" and type(value.Data.Flags) == "table", "wrong hub or invalid config")
+		local data = value.Data
+		assert(data.Scale == nil or (type(data.Scale) == "number" and data.Scale == data.Scale), "invalid scale")
+		assert(data.Pins == nil or type(data.Pins) == "table", "invalid pins")
+		return value
+	end)
+	if not ok then return nil, "config is invalid, belongs to another hub, or its key/authentication is incorrect" end
+	return payload, nil, original
+end
+
+function Hub:_writeConfig(name, payload, envelope)
+	if not configName(name) then return false, "use up to 80 letters, numbers, spaces, - or _" end
+	if not hasFS then return false, "this executor has no file functions" end
+	local ok = pcall(function()
+		ensureFolder(RiftUI.Folder) ensureFolder(self:_dir()) ensureFolder(self:_configDir())
+		writefile(self:_configDir() .. "/" .. name .. ".json", HttpService:JSONEncode(envelope or payload.Data))
+	end)
+	if not ok then return false, "couldn't write config" end
+	self:_configsChanged()
+	return true, name
+end
+
+function Hub:_applyConfig(data)
+	for flag, saved in data.Flags do
+		local control = RiftUI.Flags[flag]
+		if control and control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and type(saved) == "table" then pcall(decodeValue, control, saved) end
+	end
+	if type(data.ToggleKey) == "string" then
+		local ok, key = pcall(function() return Enum.KeyCode[data.ToggleKey] end)
+		if ok and key then
+			self.ToggleKey = key
+			if self._toggleKeyControl then self._toggleKeyControl:Set(key, true) end
+		end
+	end
+	if type(data.CommandKey) == "string" then
+		local ok, key = pcall(function() return Enum.KeyCode[data.CommandKey] end)
+		if ok and key then self:SetCommandKey(key) end
+	end
+	if data.Scale then self:SetScale(data.Scale) end
+	for _, tab in self.Tabs do
+		for _, section in tab.Sections do
+			local p = data.Pins and data.Pins[section.Id]
+			if type(p) == "table" and type(p[1]) == "number" and type(p[2]) == "number" then
+				section:Unpin() section:Pin(Vector2.new(p[1], p[2]))
+			elseif section.Pinned then section:Unpin() end
+		end
+	end
+	return true
+end
+
+function Hub:SetConfigServer(options)
+	if options == nil then self._configServer = nil return true end
+	local authority = type(options) == "table" and type(options.Url) == "string" and string.match(options.Url, "^https://([^/%s?#]+)")
+	if not authority or string.find(authority, "@", 1, true) or string.find(options.Url, "[%s?#]") then
+		return false, "config server must use an HTTPS base URL without credentials or query parameters"
+	end
+	if options.Token ~= nil and type(options.Token) ~= "string" and type(options.Token) ~= "function" then return false, "invalid token provider" end
+	self._configServer = { Url = string.gsub(options.Url, "/+$", ""), Token = options.Token, RequireEncrypted = options.RequireEncrypted == true }
+	return true
+end
+
+function Hub:LoadRemoteConfig(id, options)
+	options = options or {}
+	local server = self._configServer
+	if not server then return false, "no config server configured" end
+	if type(id) ~= "string" or #id > 80 or not string.match(id, "^[%w_-]+$") then return false, "invalid remote config ID" end
+	if options.SaveAs and not configName(options.SaveAs) then return false, "invalid local config name" end
+	local httpRequest = (typeof(request) == "function" and request) or (typeof(http_request) == "function" and http_request)
+	if not httpRequest then return false, "remote configs require the request function" end
+	local ok, response = pcall(function()
+		local token = server.Token
+		if type(token) == "function" then token = token(id) end
+		local headers = { Accept = "application/json" }
+		if token ~= nil then
+			assert(type(token) == "string" and not string.find(token, "[\r\n]"), "invalid token")
+			headers.Authorization = "Bearer " .. token
+		end
+		return httpRequest({ Url = server.Url .. "/configs/" .. id, Method = "GET", Headers = headers, Timeout = 15 })
+	end)
+	if not ok or type(response) ~= "table" then return false, "config server request failed; check connectivity and CORS in the simulator" end
+	local status = tonumber(response.StatusCode) or 0
+	if status < 200 or status >= 300 then return false, "config server returned HTTP " .. status end
+	if type(response.Body) ~= "string" or #response.Body > CONFIG_LIMIT * 2 then return false, "config server returned an invalid or oversized body" end
+	local decodeOptions = table.clone(options)
+	decodeOptions.Remote = true
+	local payload, err, envelope = self:_decodeConfig(response.Body, decodeOptions)
+	if not payload then return false, err end
+	if (server.RequireEncrypted or options.RequireEncrypted) and not envelope then return false, "this server requires encrypted configs" end
+	-- Remote configs stay in memory unless the caller explicitly asks to cache one.
+	if options.SaveAs then
+		if not envelope and self._encryptConfigs then
+			envelope, err = self:_encryptConfig(payload, options)
+			if not envelope then return false, err end
+		end
+		local saved, saveError = self:_writeConfig(options.SaveAs, payload, envelope)
+		if not saved then return false, saveError end
+	end
+	return self:_applyConfig(payload.Data)
+end
+
+function Hub:SaveConfig(name: string, options)
+	name = tostring(name or "default")
+	options = options or {}
+	if not configName(name) then return false, "invalid config name" end
+	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale, CommandKey = self.CommandKey.Name, SavedAt = os.time() }
+	for id, pos in self.Pins do data.Pins[id] = { pos.X, pos.Y } end
+	local payload = { Hub = self.Id, Name = name, Data = data }
+	local encrypted = options.Encrypt
+	if encrypted == nil then encrypted = self._encryptConfigs end
+	local envelope, err
+	if encrypted then
+		envelope, err = self:_encryptConfig(payload, options)
+		if not envelope then return false, err end
+	end
+	return self:_writeConfig(name, payload, envelope)
 end
 
 -- Settings dropdowns and the config manager rebuild their lists through this.
@@ -3974,56 +4470,16 @@ function Hub:_watchConfigs(fn)
 	table.insert(self._configWatchers, fn)
 end
 
-function Hub:LoadConfig(name: string): (boolean, string?)
-	if not hasFS then
-		return false, "this executor has no file functions"
-	end
-	local path = self:_configDir() .. "/" .. tostring(name) .. ".json"
-	if not isfile(path) then
-		return false, "no config named " .. tostring(name)
-	end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(path))
-	end)
-	if not ok or type(data) ~= "table" then
-		return false, "config file is damaged"
-	end
-	for flag, saved in data.Flags or {} do
-		local control = RiftUI.Flags[flag]
-		if control and control.Section and control.Section.Hub == self then
-			pcall(decodeValue, control, saved)
-		end
-	end
-	if data.ToggleKey then
-		local okKey, key = pcall(function()
-			return Enum.KeyCode[data.ToggleKey]
-		end)
-		if okKey and key then
-			self.ToggleKey = key
-			if self._toggleKeyControl then
-				self._toggleKeyControl:Set(key, true)
-			end
-		end
-	end
-	if data.CommandKey and Enum.KeyCode[data.CommandKey] then self:SetCommandKey(Enum.KeyCode[data.CommandKey]) end
-	if type(data.Scale) == "number" then
-		self:SetScale(data.Scale)
-		if self._scaleControl then
-			self._scaleControl:Set(math.floor(data.Scale * 100 + 0.5), true)
-		end
-	end
-	for _, tab in self.Tabs do
-		for _, section in tab.Sections do
-			local p = data.Pins and data.Pins[section.Id]
-			if p then
-				section:Unpin()
-				section:Pin(Vector2.new(p[1], p[2]))
-			elseif section.Pinned then
-				section:Unpin()
-			end
-		end
-	end
-	return true
+function Hub:LoadConfig(name: string, options)
+	if not configName(name) then return false, "invalid config name" end
+	if not hasFS then return false, "this executor has no file functions" end
+	local path = self:_configDir() .. "/" .. name .. ".json"
+	if not isfile(path) then return false, "no config named " .. name end
+	local read, body = pcall(readfile, path)
+	if not read then return false, "couldn't read config" end
+	local payload, err = self:_decodeConfig(body, options)
+	if not payload then return false, err end
+	return self:_applyConfig(payload.Data)
 end
 
 function Hub:ListConfigs(): { string }
@@ -4095,6 +4551,10 @@ function Hub:ConfigInfo(name: string)
 	end)
 	if not ok or type(data) ~= "table" then
 		return { Name = name, Damaged = true }
+	end
+	if data.Format == CONFIG_ENCRYPTED then
+		-- Listing files never invokes key providers or decrypts each stored preset.
+		return { Name = name, Encrypted = true, Locked = self._configEncryption == nil, Autoload = self:GetAutoload() == name }
 	end
 	local count = 0
 	for _ in data.Flags or {} do
@@ -4413,7 +4873,7 @@ end
 function Hub:_compatChecks()
 	local dir = self:_dir()
 	local probe = dir .. "/.rift-probe"
-	return {
+	local checks = {
 		{ Name = "Hidden UI container", Detail = "gethui", Severity = "warn", Impact = "The hub falls back to CoreGui, where some games can find it.", Run = function()
 			needs("gethui")
 			assert(typeof(gethui()) == "Instance", "gethui didn't return an Instance")
@@ -4439,8 +4899,14 @@ function Hub:_compatChecks()
 			error("listfiles didn't return the file it just wrote", 0)
 		end },
 		{ Name = "Custom assets", Detail = "getcustomasset", Severity = "fail", Impact = "Icons show as letters and shadows are missing.", Run = function()
-			needs("getcustomasset")
-			local id = getcustomasset(probe)
+			needs("getcustomasset", "writefile")
+			ensureFolder(RiftUI.Folder) ensureFolder(dir)
+			local imageProbe = probe .. ".png"
+			-- Use a real PNG: image-only executors correctly reject the text file probe.
+			writefile(imageProbe, "\137\080\078\071\013\010\026\010\000\000\000\013\073\072\068\082\000\000\000\001\000\000\000\001\008\006\000\000\000\031\021\196\137\000\000\000\013\073\068\065\084\120\218\099\100\096\248\095\015\000\002\135\001\128\235\071\186\146\000\000\000\000\073\069\078\068\174\066\096\130")
+			local ok, id = pcall(getcustomasset, imageProbe)
+			if typeof(delfile) == "function" then pcall(delfile, imageProbe) end
+			assert(ok, tostring(id))
 			assert(type(id) == "string" and #id > 0, "getcustomasset returned no content id")
 		end },
 		{ Name = "Delete files", Detail = "delfile", Severity = "warn", Impact = "Deleted configs stay in the workspace.", Run = function()
@@ -4461,6 +4927,17 @@ function Hub:_compatChecks()
 			end
 		end },
 	}
+	local ids = {}
+	for id in self._requirements do table.insert(ids, id) end
+	table.sort(ids)
+	for _, id in ids do
+		local spec = self._requirements[id]
+		table.insert(checks, { Name = spec.Name, Detail = "developer test", Severity = "warn", Impact = "Features requiring " .. id .. " stay locked.", Run = function()
+			local result = self:RunRequirement(id)
+			assert(result and result.Passed, result and result.Message or "test cancelled")
+		end })
+	end
+	return checks
 end
 
 function Hub:RunCompatibilityCheck()
@@ -4716,7 +5193,7 @@ function Hub:SetWatermark(on, quiet: boolean?)
 	update()
 	self._watermark = { Frame = frame, Scale = scale, Conns = conns }
 	dragBy(self, frame, frame, function(pos) self:_savePref("WatermarkPos", { pos.X.Offset, pos.Y.Offset }) end)
-	frame.Visible = not self.Stealth
+	frame.Visible = true
 	tween(frame, SOFT, { BackgroundTransparency = 0.04 })
 	tween(scale, RISE, { Scale = 1 })
 end
@@ -4784,14 +5261,15 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 			table.insert(rows, text({ Parent = frame, Text = "No keybinds set", TextSize = 12, TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, ZIndex = 10 }))
 		end
 		for i, c in binds do
-			local active = c.State == true or c.Mode == "Always"
+			local available = c:IsAvailable()
+			local active = available and (c.State == true or c.Mode == "Always")
 			local r = create("Frame", { Name = "Bind", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = i, ZIndex = 10, Parent = frame })
 			text({ Parent = r, Text = c.Name, TextSize = 12, TextColor3 = themeColor(theme, active and "Text" or "SubText"), Size = UDim2.new(1, -96, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
 			create("TextLabel", {
 				BackgroundColor3 = themeColor(theme, "Field"), Text = keyName(c.Value), FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
 				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -44, 0.5, 0), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 11, Parent = r,
 			}, { corner(4), stroke(themeColor(theme, "FieldStroke")), padding(0, 5), create("UISizeConstraint", { MaxSize = Vector2.new(70, 18) }) })
-			local state = c.Mode == "Always" and "Always" or (c.Mode == "Hold" and (active and "Held" or "Hold") or (active and "On" or "Off"))
+			local state = not available and "Locked" or c.Mode == "Always" and "Always" or (c.Mode == "Hold" and (active and "Held" or "Hold") or (active and "On" or "Off"))
 			text({ Parent = r, Text = state, FontFace = inter(Enum.FontWeight.Medium), TextSize = 11, TextColor3 = themeColor(theme, active and "Accent" or "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 40, 1, 0), ZIndex = 11 })
 			table.insert(rows, r)
 		end
@@ -4799,7 +5277,7 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 	self._keylist = { Frame = frame, Scale = scale, Render = render }
 	render()
 	dragBy(self, head, frame, function(pos) self:_savePref("KeybindListPos", { pos.X.Offset, pos.Y.Offset }) end)
-	frame.Visible = not self.Stealth
+	frame.Visible = true
 	tween(frame, SOFT, { BackgroundTransparency = 0.04 })
 	tween(scale, RISE, { Scale = 1 })
 end
@@ -4815,7 +5293,7 @@ RiftUI.Translations = {
 	es = {
 		["Settings"] = "Ajustes", ["Toolbar, configs and about"] = "Barra, configuraciones e información", ["Interface"] = "Interfaz", ["Config"] = "Configuración",
 		["Toolbar key"] = "Tecla de la barra", ["Command palette key"] = "Tecla de búsqueda", ["Interface scale"] = "Escala de interfaz", ["Theme"] = "Tema",
-		["Open theme studio"] = "Abrir estudio de temas", ["Stealth mode"] = "Modo sigilo", ["Random instance names, no notifications, toolbar starts hidden"] = "Nombres aleatorios, sin notificaciones, barra oculta al iniciar",
+		["Open theme studio"] = "Abrir estudio de temas", ["Stealth mode"] = "Modo sigilo", ["Local assets only, built-in font fallback, quiet library output"] = "Solo recursos locales, fuente integrada y biblioteca silenciosa",
 		["Watermark"] = "Marca de agua", ["Hub name, FPS, ping and time"] = "Nombre, FPS, ping y hora", ["Keybind list"] = "Lista de teclas", ["Bound keys and their state"] = "Teclas asignadas y su estado", ["Language"] = "Idioma",
 		["Config name"] = "Nombre", ["Save"] = "Guardar", ["Saved"] = "Guardadas", ["Load selected"] = "Cargar selección", ["Autoload a config"] = "Cargar al iniciar",
 		["Loads on start, before the toolbar shows"] = "Se aplica al iniciar, antes de mostrar la barra", ["Autoload config"] = "Configuración inicial", ["Manage configs"] = "Gestionar configuraciones",
@@ -4836,7 +5314,7 @@ RiftUI.Translations = {
 	pt = {
 		["Settings"] = "Configurações", ["Toolbar, configs and about"] = "Barra, perfis e sobre", ["Interface"] = "Interface", ["Config"] = "Perfil",
 		["Toolbar key"] = "Tecla da barra", ["Command palette key"] = "Tecla de busca", ["Interface scale"] = "Escala da interface", ["Theme"] = "Tema",
-		["Open theme studio"] = "Abrir estúdio de temas", ["Stealth mode"] = "Modo furtivo", ["Random instance names, no notifications, toolbar starts hidden"] = "Nomes aleatórios, sem notificações, barra oculta ao iniciar",
+		["Open theme studio"] = "Abrir estúdio de temas", ["Stealth mode"] = "Modo furtivo", ["Local assets only, built-in font fallback, quiet library output"] = "Apenas recursos locais, fonte interna e biblioteca silenciosa",
 		["Watermark"] = "Marca d'água", ["Hub name, FPS, ping and time"] = "Nome, FPS, ping e hora", ["Keybind list"] = "Lista de teclas", ["Bound keys and their state"] = "Teclas definidas e seu estado", ["Language"] = "Idioma",
 		["Config name"] = "Nome", ["Save"] = "Salvar", ["Saved"] = "Salvos", ["Load selected"] = "Carregar selecionado", ["Autoload a config"] = "Carregar ao iniciar",
 		["Loads on start, before the toolbar shows"] = "Aplicado ao iniciar, antes da barra aparecer", ["Autoload config"] = "Perfil inicial", ["Manage configs"] = "Gerenciar perfis",
@@ -4857,7 +5335,7 @@ RiftUI.Translations = {
 	de = {
 		["Settings"] = "Einstellungen", ["Toolbar, configs and about"] = "Leiste, Profile und Info", ["Interface"] = "Oberfläche", ["Config"] = "Profil",
 		["Toolbar key"] = "Leistentaste", ["Command palette key"] = "Suchtaste", ["Interface scale"] = "Skalierung", ["Theme"] = "Design",
-		["Open theme studio"] = "Design-Studio öffnen", ["Stealth mode"] = "Tarnmodus", ["Random instance names, no notifications, toolbar starts hidden"] = "Zufällige Namen, keine Hinweise, Leiste startet verborgen",
+		["Open theme studio"] = "Design-Studio öffnen", ["Stealth mode"] = "Tarnmodus", ["Local assets only, built-in font fallback, quiet library output"] = "Nur lokale Assets, integrierte Schrift und stille Bibliothek",
 		["Watermark"] = "Wasserzeichen", ["Hub name, FPS, ping and time"] = "Name, FPS, Ping und Uhrzeit", ["Keybind list"] = "Tastenliste", ["Bound keys and their state"] = "Belegte Tasten und ihr Zustand", ["Language"] = "Sprache",
 		["Config name"] = "Name", ["Save"] = "Speichern", ["Saved"] = "Gespeichert", ["Load selected"] = "Auswahl laden", ["Autoload a config"] = "Beim Start laden",
 		["Loads on start, before the toolbar shows"] = "Wird beim Start geladen, bevor die Leiste erscheint", ["Autoload config"] = "Startprofil", ["Manage configs"] = "Profile verwalten",
@@ -4878,7 +5356,7 @@ RiftUI.Translations = {
 	fr = {
 		["Settings"] = "Réglages", ["Toolbar, configs and about"] = "Barre, profils et infos", ["Interface"] = "Interface", ["Config"] = "Profil",
 		["Toolbar key"] = "Touche de la barre", ["Command palette key"] = "Touche de recherche", ["Interface scale"] = "Échelle", ["Theme"] = "Thème",
-		["Open theme studio"] = "Ouvrir le studio de thèmes", ["Stealth mode"] = "Mode discret", ["Random instance names, no notifications, toolbar starts hidden"] = "Noms aléatoires, aucune notification, barre masquée au lancement",
+		["Open theme studio"] = "Ouvrir le studio de thèmes", ["Stealth mode"] = "Mode discret", ["Local assets only, built-in font fallback, quiet library output"] = "Ressources locales, police intégrée et bibliothèque silencieuse",
 		["Watermark"] = "Filigrane", ["Hub name, FPS, ping and time"] = "Nom, FPS, ping et heure", ["Keybind list"] = "Liste des touches", ["Bound keys and their state"] = "Touches assignées et leur état", ["Language"] = "Langue",
 		["Config name"] = "Nom", ["Save"] = "Enregistrer", ["Saved"] = "Enregistrés", ["Load selected"] = "Charger la sélection", ["Autoload a config"] = "Charger au lancement",
 		["Loads on start, before the toolbar shows"] = "Appliqué au lancement, avant l'affichage de la barre", ["Autoload config"] = "Profil de départ", ["Manage configs"] = "Gérer les profils",
@@ -6831,48 +7309,44 @@ end
 ---------------------------------------------------------------- config sharing and manager
 local CONFIG_PREFIX = "RIFTCFG1:"
 
-function Hub:ExportConfig(name: string): (string?, string?)
-	local path = self:_configDir() .. "/" .. tostring(name) .. ".json"
-	if not hasFS or not isfile(path) then
-		return nil, "no config named " .. tostring(name)
+function Hub:ExportConfig(name: string, options): (string?, string?)
+	if not configName(name) then return nil, "invalid config name" end
+	local path = self:_configDir() .. "/" .. name .. ".json"
+	if not hasFS or not isfile(path) then return nil, "no config named " .. name end
+	local ok, value = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+	if not ok or type(value) ~= "table" then return nil, "config file is damaged" end
+	-- Preserve an already encrypted file when sharing, even without its key.
+	if value.Format == CONFIG_ENCRYPTED and (not options or options.Encrypt ~= false) then
+		return CONFIG_ENCRYPTED_PREFIX .. encodeBase64(HttpService:JSONEncode(value))
 	end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(path))
-	end)
-	if not ok or type(data) ~= "table" then
-		return nil, "config file is damaged"
+	local payload, err = self:_decodeConfig(value, options)
+	if not payload then return nil, err end
+	payload.Name = name
+	if options and options.Encrypt then
+		local envelope
+		envelope, err = self:_encryptConfig(payload, options)
+		if not envelope then return nil, err end
+		return CONFIG_ENCRYPTED_PREFIX .. encodeBase64(HttpService:JSONEncode(envelope))
 	end
-	return CONFIG_PREFIX .. encodeBase64(HttpService:JSONEncode({ Hub = self.Id, Name = name, Data = data }))
+	return CONFIG_PREFIX .. encodeBase64(HttpService:JSONEncode(payload))
 end
 
-function Hub:ImportConfig(code: string, saveAs: string?): (boolean, string?)
+function Hub:ImportConfig(code: string, saveAs: string?, options): (boolean, string?)
 	code = string.gsub(tostring(code or ""), "%s", "")
-	if string.sub(code, 1, #CONFIG_PREFIX) ~= CONFIG_PREFIX then
-		return false, "not a RiftUI config code"
+	if #code > CONFIG_LIMIT * 3 then return false, "config code is too large" end
+	local prefix = string.sub(code, 1, #CONFIG_PREFIX)
+	if prefix ~= CONFIG_PREFIX and prefix ~= CONFIG_ENCRYPTED_PREFIX then return false, "not a RiftUI config code" end
+	local ok, value = pcall(function() return HttpService:JSONDecode(decodeBase64(string.sub(code, #CONFIG_PREFIX + 1))) end)
+	if not ok then return false, "the code is cut off or damaged" end
+	if prefix == CONFIG_ENCRYPTED_PREFIX and (type(value) ~= "table" or value.Format ~= CONFIG_ENCRYPTED) then return false, "invalid encrypted config code" end
+	local payload, err, envelope = self:_decodeConfig(value, options)
+	if not payload then return false, err end
+	local name = saveAs and saveAs ~= "" and saveAs or payload.Name or "imported"
+	if not envelope and self._encryptConfigs then
+		envelope, err = self:_encryptConfig(payload, options)
+		if not envelope then return false, err end
 	end
-	local ok, payload = pcall(function()
-		return HttpService:JSONDecode(decodeBase64(string.sub(code, #CONFIG_PREFIX + 1)))
-	end)
-	if not ok or type(payload) ~= "table" or type(payload.Data) ~= "table" then
-		return false, "the code is cut off or damaged"
-	end
-	if payload.Hub ~= self.Id then
-		return false, "this code is for " .. tostring(payload.Hub) .. ", not " .. self.Id
-	end
-	local name = (saveAs and saveAs ~= "") and saveAs or tostring(payload.Name or "imported")
-	if not string.match(name, "^[%w%s%-_]+$") then
-		return false, "use letters, numbers, spaces, - or _"
-	end
-	if not hasFS then
-		return false, "this executor has no file functions"
-	end
-	ensureFolder(RiftUI.Folder)
-	ensureFolder(self:_dir())
-	ensureFolder(self:_configDir())
-	payload.Data.SavedAt = os.time()
-	writefile(self:_configDir() .. "/" .. name .. ".json", HttpService:JSONEncode(payload.Data))
-	self:_configsChanged()
-	return true, name
+	return self:_writeConfig(name, payload, envelope)
 end
 
 local function ago(t: number?): string
@@ -6957,6 +7431,25 @@ function Hub:_buildConfigManager()
 		toast(ok, "Save", name, err)
 	end })
 
+	if self._configEncryption then
+		local storage = saved:Section({ Name = "Storage", Side = "Right" })
+		storage:Toggle({ Name = "Encrypt saved configs", Default = self._encryptConfigs, Description = "Uses the key supplied by this hub", Callback = function(on)
+			self._encryptConfigs = on
+			self:_savePref("EncryptConfigs", on)
+		end })
+	end
+	if self._configServer then
+		local remote = win:Tab({ Name = "Remote", Icon = "cloud-download" })
+		local source = remote:Section({ Name = "Config server", Side = "Left" })
+		local id = source:Input({ Name = "Config ID", Placeholder = "e.g. premium-legit" })
+		local cache = source:Toggle({ Name = "Save a local copy", Default = false })
+		source:Button({ Name = "Load remote config", Callback = function()
+			local ok, err = self:LoadRemoteConfig(id.Value, { SaveAs = cache.Value and id.Value or nil })
+			toast(ok, "Load remote config", id.Value, err)
+		end })
+		source:Paragraph({ Content = "Access is checked by the config server. Remote configs stay in memory unless you save a local copy." })
+	end
+
 	local share = win:Tab({ Name = "Share", Icon = "share-2" })
 	local export = share:Section({ Name = "Export", Side = "Left" })
 	local exportPick = export:Dropdown({ Name = "Config", Options = self:ListConfigs() })
@@ -7010,7 +7503,7 @@ function Hub:_buildConfigManager()
 			if on then stroke(themeColor(theme, "TileActiveStroke")).Parent = row end
 			iconLabel(name == autoload and "zap" or "file", 15, name == autoload and theme.Accent or theme.SubText, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Parent = row })
 			text({ Parent = row, Text = name, FontFace = inter(Enum.FontWeight.Medium), TextSize = 13, Position = UDim2.fromOffset(34, 6), Size = UDim2.new(1, -44, 0, 17), TextTruncate = Enum.TextTruncate.AtEnd })
-			local meta = info.Damaged and "damaged file" or ((info.Settings or 0) .. " settings · " .. ago(info.SavedAt))
+			local meta = info.Encrypted and (info.Locked and "encrypted · key required" or "encrypted") or (info.Damaged and "damaged file" or ((info.Settings or 0) .. " settings · " .. ago(info.SavedAt)))
 			if name == autoload then meta ..= " · loads on start" end
 			text({ Parent = row, Text = meta, TextSize = 11, TextColor3 = themeColor(theme, info.Damaged and "Danger" or "SubText"), Position = UDim2.fromOffset(34, 23), Size = UDim2.new(1, -44, 0, 15), TextTruncate = Enum.TextTruncate.AtEnd })
 			row.MouseEnter:Connect(function() if selected ~= name then tween(row, FAST, { BackgroundTransparency = 0.5 }) end end)
@@ -7688,14 +8181,17 @@ function Hub:_buildSettings()
 				self:OpenThemeStudio()
 			end,
 		})
-		self._stealthControl = ui:Toggle({
-			Name = "Stealth mode",
-			Description = "Random instance names, no notifications, toolbar starts hidden",
-			Default = self.Stealth,
-			Callback = function(on)
-				self:SetStealth(on)
-			end,
-		})
+		if self._stealthLocked then
+			self._stealthStatus = ui:_info("Stealth mode", self.Stealth and "Script: On" or "Script: Off")
+			ui:Paragraph({ Content = "Stealth mode is controlled by this script." })
+		else
+			self._stealthControl = ui:Toggle({
+				Name = "Stealth mode",
+				Description = "Local assets only, built-in font fallback, quiet library output",
+				Default = self.Stealth,
+				Callback = function(on) self:SetStealth(on) end,
+			})
+		end
 		self._watermarkControl = ui:Toggle({
 			Name = "Watermark",
 			Description = "Hub name, FPS, ping and time",
@@ -7723,6 +8219,24 @@ function Hub:_buildSettings()
 			})
 		end
 
+		if next(self._requirements) then
+			local section = tab:Section({ Name = "Feature requirements", Side = "Right" })
+			local fields = {}
+			local ids = {}
+			for id in self._requirements do table.insert(ids, id) end
+			table.sort(ids)
+			for _, id in ids do fields[id] = section:_info(self._requirements[id].Name, "Checking…") end
+			local function refresh(results)
+				for id, field in fields do
+					local result = results[id]
+					field:Set(result.Passed and "Available" or result.Status == "pending" and "Checking…" or "Unavailable")
+				end
+			end
+			self:OnRequirementsChanged(refresh)
+			refresh(self._requirementResults)
+			section:Button({ Name = "Recheck feature requirements", Callback = function() self:RunRequirements() end })
+		end
+
 		local cfg = tab:Section({ Name = "Config", Side = "Right" })
 		local nameBox = cfg:Input({ Name = "Config name", Placeholder = "e.g. legit", Default = "default" })
 		cfg:Button({
@@ -7742,31 +8256,32 @@ function Hub:_buildSettings()
 			end,
 		})
 		-- autoload has its own picker, so browsing Saved never changes what loads on start
-		local autoPick
 		local autoToggle = cfg:Toggle({
 			Name = "Autoload a config",
 			Description = "Loads on start, before the toolbar shows",
 			Default = self:GetAutoload() ~= nil,
-			Callback = function(on)
-				autoPick:SetVisible(on)
-				if not on then
-					self:SetAutoload(nil)
-				elseif autoPick.Value then
-					self:SetAutoload(autoPick.Value)
-				end
-			end,
 		})
-		autoPick = cfg:Dropdown({
+		local autoPick = cfg:Dropdown({
 			Name = "Autoload config",
 			Options = self:ListConfigs(),
 			Default = self:GetAutoload(),
-			Callback = function(name)
-				if autoToggle.Value and name then
-					self:SetAutoload(name)
-					self:Notify({ Title = "Autoload set", Content = tostring(name) .. " loads when the hub starts.", Duration = 3 })
-				end
-			end,
 		})
+		-- Default-on controls can emit during construction. Bind cross-control callbacks
+		-- only after both controls exist; their initial state is synchronized below.
+		autoToggle.Callback = function(on)
+			autoPick:SetVisible(on)
+			if not on then
+				self:SetAutoload(nil)
+			elseif autoPick.Value then
+				self:SetAutoload(autoPick.Value)
+			end
+		end
+		autoPick.Callback = function(name)
+			if autoToggle.Value and name then
+				self:SetAutoload(name)
+				self:Notify({ Title = "Autoload set", Content = tostring(name) .. " loads when the hub starts.", Duration = 3 })
+			end
+		end
 		autoPick:SetVisible(autoToggle.Value)
 		local manager = self:_buildConfigManager()
 		cfg:Button({ Name = "Manage configs", Window = manager })
@@ -7865,6 +8380,9 @@ function Hub:_teardown()
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	self._themeTweens = nil
 	self._destroyed = true
+	secureHubs[self] = nil
+	for _, thread in self._requirementThreads or {} do pcall(task.cancel, thread) end
+	self._requirementWatchers = {}
 	if self._watermark then
 		for _, conn in self._watermark.Conns do conn:Disconnect() end
 	end
@@ -7914,6 +8432,7 @@ function Hub:Reinitialize()
 	local scale = self._scale
 	local toggleKey = self.ToggleKey
 	local commandKey = self.CommandKey
+	local configEncryption, encryptConfigs, configServer = self._configEncryption, self._encryptConfigs, self._configServer
 	local wasOpen = self._open and self._open.Name
 	self:_teardown()
 	if failureGui then
@@ -7921,10 +8440,14 @@ function Hub:Reinitialize()
 		failureGui = nil
 	end
 	local ok, err = xpcall(function()
-		local fresh = RiftUI:CreateHub(self.Options)
+		local rebuildOptions = table.clone(self.Options)
+		rebuildOptions.Stealth = stealth
+		local fresh = RiftUI:CreateHub(rebuildOptions)
+		fresh._stealthLocked = self._stealthLocked
 		fresh._replaying = true
 		fresh.ToggleKey = toggleKey
 		fresh.CommandKey = commandKey
+		fresh._configEncryption, fresh._encryptConfigs, fresh._configServer = configEncryption, encryptConfigs, configServer
 		fresh:SetScale(scale)
 		local map = { [self] = fresh }
 		for _, step in recipe do
@@ -7947,7 +8470,9 @@ function Hub:Reinitialize()
 		for flag, saved in values do
 			local control = RiftUI.Flags[flag]
 			if control then
-				pcall(decodeValue, control, saved, true)
+				if #control.Requires > 0 and not control:IsAvailable() then
+					control._requirementRestore = saved
+				else pcall(decodeValue, control, saved, true) end
 			end
 		end
 		for _, tab in fresh.Tabs do

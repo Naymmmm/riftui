@@ -99,7 +99,7 @@ local host = {
 			end
 			return table.concat(out, "\31")
 		elseif op == "asset" then
-			return files[path] and ("rbxasset://riftsim/" .. path) or "ERR\31missing " .. path
+			return files[path] and string.sub(files[path], 1, 11) == "iVBORw0KGgo" and ("rbxasset://riftsim/" .. path) or "ERR\31image-only executor: not a PNG " .. path
 		end
 		return ""
 	end,
@@ -177,6 +177,7 @@ host.run([[
 	local Hub = Rift:CreateHub({ Name = "Test Hub", Id = "test-hub", Setup = false })
 	R.hubId = Hub.Id
 	local compat = Hub:RunCompatibilityCheck()
+	R.customAssetProbeRemoved = not isfile("RiftUI/test-hub/.rift-probe.png")
 	R.compatCount = #compat
 	R.compatFailed = {}
 	for _, r in compat do
@@ -276,6 +277,29 @@ host.run([[
 	R.loaded = Hub:LoadConfig("unit")
 	R.after = { flags.TA.Value, flags.TB.Value, flags.TC.Value, flags.TD.Value and flags.TD.Value.Name }
 	R.configs = Hub:ListConfigs()
+	-- A saved autoload starts the toggle on. Its constructor must not call a nil picker.
+	makefolder("RiftUI/autoload-startup")
+	makefolder("RiftUI/autoload-startup/configs")
+	writefile("RiftUI/autoload-startup/configs/start.json", game:GetService("HttpService"):JSONEncode({ Flags = {} }))
+	writefile("RiftUI/autoload-startup/configs/autoload.txt", "start")
+	local errorsBeforeStartup = #Rift.Errors
+	local startup = Rift:CreateHub({ Name = "Autoload startup", Id = "autoload-startup", Setup = false })
+	task.wait(0.15)
+	local startupToggle, startupPick
+	for _, section in startup.SettingsTab.Sections do
+		for _, control in section.Controls do
+			if control.Name == "Autoload a config" then startupToggle = control end
+			if control.Name == "Autoload config" then startupPick = control end
+		end
+	end
+	R.autoloadStartup = #Rift.Errors == errorsBeforeStartup and startupToggle.Value and startupPick.Frame.Visible and startupPick.Value == "start"
+	startupToggle:Set(false)
+	task.wait(0.03)
+	R.autoloadDisable = startup:GetAutoload() == nil and not startupPick.Frame.Visible
+	startupToggle:Set(true)
+	task.wait(0.03)
+	R.autoloadEnable = startup:GetAutoload() == "start" and startupPick.Frame.Visible
+	startup:Destroy()
 	-- per-config autoload, rename, share codes
 	Hub:SetAutoload("unit")
 	R.autoload = Hub:GetAutoload() == "unit"
@@ -406,9 +430,9 @@ host.run([[
 	t:Set(false)
 	R.forwarded = flags.TA.Value == false
 	Hub:SetStealth(true)
-	R.stealthName = Hub.Gui.Name ~= "RiftUI"
+	R.stealthName = Hub.Stealth and Hub.Gui.Name == "RiftUI" and Hub.DockHolder.Visible
 	Hub:SetStealth(false)
-	R.stealthRestored = Hub.Gui.Name == "RiftUI"
+	R.stealthRestored = not Hub.Stealth and Hub.Gui.Name == "RiftUI"
 	local setupGui = Hub.Gui
 	Hub.Options.Setup = { Title = "How do you play?", Options = {
 		{ Type = "Dropdown", Name = "Play style", Options = { "Legit", "Balanced" }, Default = "Legit" },
@@ -441,9 +465,10 @@ host.run([[
 	R.destroyed = Hub.Gui.Parent == nil
 	R.unloaded = Rift.State == "Unloaded"
 ]], "api")
-frames(300)
+frames(360)
 check(R.hubId == "test-hub", "hubs keep their Id")
 check(R.compatCount and R.compatCount >= 8 and #R.compatFailed == 0, "compatibility check passes on a full sUNC host (" .. table.concat(R.compatFailed or {}, "; ") .. ")")
+check(R.customAssetProbeRemoved, "custom asset check uses a real PNG and cleans up on an image-only executor")
 check(R.bgEmpty == true, "empty image downloads have a specific error")
 check(R.bgHTML == true, "HTML responses explain that a direct image URL is needed")
 check(R.bgBase64 == true, "SetBackground decodes a base64 PNG data URI into RiftUI/<Id>/background.png")
@@ -464,6 +489,7 @@ check(files["RiftUI/test-hub/configs/unit.json"] ~= nil, "configs live under Rif
 check(R.toggled == true, "Toggle callback fires with the new value")
 check(R.badgeHidden == true, "tiles show no toggle-count badge unless ToggleBadges is set")
 check(R.badge == "New" and R.badgeCleared == true, "Tab:SetBadge shows and clears a badge")
+check(R.autoloadStartup and R.autoloadDisable and R.autoloadEnable, "saved autoload initializes without callback errors and its independent selector follows the toggle")
 check(R.autoload == true, "SetAutoload / GetAutoload round-trip")
 check(R.exported == true and R.imported == true, "ExportConfig code imports under a new name")
 check(R.foreignRefused == true, "ImportConfig refuses a code for another hub")
@@ -501,8 +527,8 @@ check(R.pinned == true, "Section:Pin moves rows into a floating card")
 check(R.unpinned == true, "Section:Unpin returns rows to the panel")
 check(R.reinitValue == true, "Reinitialize keeps flag values")
 check(R.forwarded == true, "old control references forward to the rebuilt hub")
-check(R.stealthName == true, "stealth mode randomises instance names")
-check(R.stealthRestored == true, "turning stealth off restores names")
+check(R.stealthName == true, "stealth asset policy leaves the toolbar usable")
+check(R.stealthRestored == true, "stealth asset policy can be turned off")
 check(R.setupLiveTheme == true, "setup theme choices recolour the existing hub")
 check(R.setupOptions == true, "setup option controls have a frame viewport rather than a zero-height canvas")
 check(R.setupCompat == true, "compatibility summary is visible inside a frame viewport")
